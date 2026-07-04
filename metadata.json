@@ -1,0 +1,6 @@
+{
+  "name": "SketchMind",
+  "description": "An AI-powered drawing guessing game where an in-browser machine learning model predicts what you draw in real-time.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
