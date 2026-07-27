@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { Trophy, Calendar, Sparkles, Trash2, ArrowLeft, Search, Clock, Award, ShieldAlert } from 'lucide-react';
-import { LeaderboardEntry } from '../types';
+import React, { useEffect, useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Trophy, Clock, Search, ArrowLeft, Sparkles, Trash2, ShieldAlert, Zap, CheckCircle, Flame, UserCheck } from 'lucide-react';
+import { DailyLeaderboardEntry } from '../types';
+import { getLeaderboard, cleanupExpiredScores, clearLeaderboard, seedSampleEntriesIfEmpty } from '../utils/leaderboardService';
 import { soundManager } from './SoundManager';
 
 interface LeaderboardPanelProps {
@@ -9,223 +11,289 @@ interface LeaderboardPanelProps {
 }
 
 export default function LeaderboardPanel({ onBack, highlightId }: LeaderboardPanelProps) {
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [entries, setEntries] = useState<DailyLeaderboardEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showConfirmReset, setShowConfirmReset] = useState(false);
+  const [timeNow, setTimeNow] = useState(Date.now());
+  const highlightRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadLeaderboard();
+    // Clean up expired scores on mount and load valid entries
+    loadData();
+
+    // Live clock update every 30s to update relative expiration timers
+    const interval = setInterval(() => {
+      setTimeNow(Date.now());
+      cleanupExpiredScores();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  const loadLeaderboard = () => {
-    if (typeof window === 'undefined') return;
-    const stored = localStorage.getItem('sketchmind_leaderboard_20');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as LeaderboardEntry[];
-        // Sort primary by Completion Time (lowest/fastest first), then Score (highest first), then Accuracy (highest first)
-        const sorted = parsed.sort((a, b) => {
-          if (a.completionTime !== b.completionTime) {
-            return a.completionTime - b.completionTime;
-          }
-          if (b.score !== a.score) {
-            return b.score - a.score;
-          }
-          return b.accuracy - a.accuracy;
-        });
-        setEntries(sorted.slice(0, 15));
-      } catch (e) {
-        console.error('Error loading leaderboard', e);
-      }
-    } else {
-      // Seed default orientation records
-      const defaultEntries: LeaderboardEntry[] = [
-        { id: 'seed1', name: 'Zack (CS)', completionTime: 112, formattedTime: '01:52', score: 1920, date: '2026-07-27', accuracy: 96, skipsUsed: 0, difficultyCompleted: 'Completed 20' },
-        { id: 'seed2', name: 'Maya (EE)', completionTime: 128, formattedTime: '02:08', score: 1840, date: '2026-07-27', accuracy: 94, skipsUsed: 0, difficultyCompleted: 'Completed 20' },
-        { id: 'seed3', name: 'Alex (Design)', completionTime: 145, formattedTime: '02:25', score: 1760, date: '2026-07-26', accuracy: 90, skipsUsed: 1, difficultyCompleted: 'Completed 20' },
-        { id: 'seed4', name: 'Prof. Chen', completionTime: 168, formattedTime: '02:48', score: 1680, date: '2026-07-25', accuracy: 88, skipsUsed: 1, difficultyCompleted: 'Completed 20' },
-        { id: 'seed5', name: 'Leo (ME)', completionTime: 190, formattedTime: '03:10', score: 1550, date: '2026-07-24', accuracy: 85, skipsUsed: 2, difficultyCompleted: 'Completed 20' }
-      ];
-      localStorage.setItem('sketchmind_leaderboard_20', JSON.stringify(defaultEntries));
-      setEntries(defaultEntries);
-    }
+  const loadData = () => {
+    // Seed sample entries if totally empty so orientation mode looks populated on first launch
+    seedSampleEntriesIfEmpty();
+    const active = getLeaderboard();
+    setEntries(active);
   };
 
-  const clearLeaderboard = () => {
-    localStorage.removeItem('sketchmind_leaderboard_20');
+  // Auto-scroll to highlighted player card if highlightId is passed
+  useEffect(() => {
+    if (highlightId && highlightRef.current) {
+      setTimeout(() => {
+        highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+    }
+  }, [highlightId, entries]);
+
+  const handleClear = () => {
+    clearLeaderboard();
     setEntries([]);
     setShowConfirmReset(false);
     soundManager.playClick();
   };
 
   const filteredEntries = entries.filter(e =>
-    e.name.toLowerCase().includes(searchQuery.toLowerCase())
+    e.playerName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const formatSeconds = (sec: number) => {
+    const mins = Math.floor(sec / 60);
+    const secs = sec % 60;
+    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  const getRemainingTimeString = (expiresAt: number) => {
+    const diffMs = expiresAt - timeNow;
+    if (diffMs <= 0) return 'Expiring';
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours > 0) return `${hours}h ${mins}m left`;
+    return `${mins}m left`;
+  };
+
   return (
-    <div className="bg-white/70 backdrop-blur-xl border border-white/80 shadow-2xl rounded-[2.5rem] p-6 sm:p-8 w-full max-w-xl mx-auto relative z-10">
-      {/* Top Header */}
-      <div className="flex items-center justify-between mb-6">
+    <div className="bg-white/70 backdrop-blur-xl border border-white/80 shadow-2xl rounded-[2.5rem] p-5 sm:p-8 w-full max-w-xl mx-auto relative z-10">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           {onBack && (
             <button
               onClick={onBack}
-              className="p-2 rounded-xl bg-white/60 hover:bg-white text-slate-600 transition-all border border-white/80 shadow-sm cursor-pointer"
+              className="p-2.5 rounded-2xl bg-white/80 hover:bg-white text-slate-600 transition-all border border-white/80 shadow-xs cursor-pointer active:scale-95"
               title="Back"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
           )}
 
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shadow-inner">
-            <Trophy className="w-5 h-5 fill-current" />
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-white shadow-md shadow-amber-500/20 shrink-0">
+            <Trophy className="w-6 h-6 fill-current" />
           </div>
 
           <div>
-            <h3 className="text-xl font-black text-slate-800 tracking-tight">20-Sketch Leaderboard</h3>
-            <p className="text-xs text-slate-500 font-medium">Ranked by Completion Speed & Accuracy</p>
+            <h3 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight leading-none">
+              🏆 Today's Champions
+            </h3>
+            <p className="text-[11px] text-amber-700/80 font-bold mt-1 flex items-center gap-1.5">
+              <Zap className="w-3 h-3 text-amber-500 fill-current" />
+              <span>Live 24-Hour Event Leaderboard</span>
+            </p>
           </div>
         </div>
 
         {entries.length > 0 && (
           <button
             onClick={() => setShowConfirmReset(true)}
-            className="cursor-pointer text-slate-400 hover:text-rose-600 p-2 rounded-xl hover:bg-rose-50 transition-colors border border-transparent hover:border-rose-100"
-            title="Reset Leaderboard"
+            className="cursor-pointer text-slate-400 hover:text-rose-600 p-2.5 rounded-2xl hover:bg-rose-50 transition-colors border border-transparent hover:border-rose-100"
+            title="Reset Event Leaderboard"
           >
             <Trash2 className="w-4 h-4" />
           </button>
         )}
       </div>
 
-      {/* Search Input */}
-      <div className="relative mb-5">
-        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-        <input
-          type="text"
-          placeholder="Search orientation participant..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 text-xs bg-white/60 hover:bg-white focus:bg-white border border-white/80 focus:border-blue-500 rounded-xl font-bold transition-all outline-none shadow-sm"
-        />
+      {/* Subtitle Banner */}
+      <div className="bg-amber-50/80 border border-amber-200/60 rounded-2xl p-3 mb-5 flex items-start gap-2.5">
+        <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+        <p className="text-[11px] font-semibold text-amber-900/80 leading-relaxed">
+          Only scores from the last 24 hours are shown. The leaderboard refreshes automatically every day to keep the competition fresh!
+        </p>
       </div>
 
-      {/* Leaderboard List */}
-      <div className="space-y-2.5 mb-6 max-h-[380px] overflow-y-auto pr-1">
+      {/* Search Input */}
+      {entries.length > 0 && (
+        <div className="relative mb-4">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+          <input
+            type="text"
+            placeholder="Search event participant..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 text-xs bg-white/80 focus:bg-white border border-white/80 focus:border-amber-500 rounded-2xl font-bold transition-all outline-none shadow-xs"
+          />
+        </div>
+      )}
+
+      {/* Leaderboard Entries List */}
+      <div className="space-y-3 mb-4 max-h-[420px] overflow-y-auto pr-1">
         {filteredEntries.length === 0 ? (
-          <div className="text-center py-12 border border-white/60 bg-white/40 rounded-2xl text-slate-400">
-            <Trophy className="w-10 h-10 stroke-[1] mx-auto mb-2 text-slate-300" />
-            <p className="text-sm font-bold text-slate-600">No matching records found.</p>
-            <p className="text-xs text-slate-400">Complete the 20-Sketch Challenge to record a time!</p>
+          <div className="text-center py-12 px-4 border border-white/80 bg-white/50 rounded-3xl text-slate-400 flex flex-col items-center">
+            <div className="w-16 h-16 rounded-3xl bg-amber-100/60 border border-amber-200/80 flex items-center justify-center text-amber-500 mb-3 shadow-inner">
+              <Trophy className="w-8 h-8 stroke-[1.5]" />
+            </div>
+            <h4 className="text-base font-extrabold text-slate-700 mb-1">
+              No one has played today's challenge yet.
+            </h4>
+            <p className="text-xs text-slate-500 font-medium max-w-xs mb-4">
+              Be the first SketchMind Champion! Complete the 20-Sketch Challenge to top the event board.
+            </p>
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="cursor-pointer bg-gradient-to-r from-amber-500 to-amber-600 hover:opacity-95 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl shadow-md transition-all flex items-center gap-1.5"
+              >
+                <Flame className="w-4 h-4" />
+                <span>Start Challenge Now</span>
+              </button>
+            )}
           </div>
         ) : (
           filteredEntries.map((entry, idx) => {
             const isHighlighted = entry.id === highlightId;
             const rankBadges = ['🥇 Gold', '🥈 Silver', '🥉 Bronze'];
-            const rankColors = [
-              'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-md border-amber-400',
-              'bg-gradient-to-r from-slate-400 to-slate-500 text-white shadow-sm border-slate-300',
-              'bg-gradient-to-r from-amber-700 to-amber-800 text-white shadow-sm border-amber-600'
+            const rankGradients = [
+              'bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 text-white shadow-md shadow-amber-500/20 border-amber-300',
+              'bg-gradient-to-r from-slate-400 via-slate-500 to-slate-600 text-white shadow-sm border-slate-300',
+              'bg-gradient-to-r from-amber-700 via-amber-800 to-amber-900 text-white shadow-sm border-amber-600'
             ];
 
             return (
-              <div
+              <motion.div
                 key={entry.id}
-                className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all ${
+                ref={isHighlighted ? highlightRef : undefined}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, delay: idx * 0.03 }}
+                className={`flex items-center justify-between p-3.5 sm:p-4 rounded-2xl border transition-all ${
                   isHighlighted
-                    ? 'bg-blue-500/10 border-blue-500/30 shadow-[0_4px_16px_rgb(59,130,246,0.12)]'
-                    : 'bg-white/50 border-white/80 hover:bg-white/80 shadow-xs'
+                    ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-500/40 shadow-[0_4px_20px_rgba(59,130,246,0.2)] scale-[1.02] ring-2 ring-blue-500/30'
+                    : idx < 3
+                    ? 'bg-white/80 border-white shadow-xs hover:bg-white'
+                    : 'bg-white/60 border-white/80 hover:bg-white/80 shadow-xs'
                 }`}
               >
-                {/* Left: Rank & Name */}
+                {/* Left Section: Rank & Details */}
                 <div className="flex items-center gap-3">
-                  <div className={`w-7 h-7 rounded-xl text-xs font-black flex items-center justify-center border shrink-0 ${
-                    idx < 3 ? rankColors[idx] : 'bg-slate-100 text-slate-600 border-slate-200'
-                  }`}>
-                    {idx < 3 ? idx + 1 : idx + 1}
+                  {/* Rank Badge */}
+                  <div
+                    className={`w-8 h-8 rounded-2xl text-xs font-black flex items-center justify-center border shrink-0 ${
+                      idx < 3 ? rankGradients[idx] : 'bg-slate-100 text-slate-700 border-slate-200 font-mono'
+                    }`}
+                  >
+                    {idx + 1}
                   </div>
 
+                  {/* Player Info */}
                   <div>
-                    <span className="text-sm font-extrabold text-slate-800 flex items-center gap-1.5">
-                      {entry.name}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-extrabold text-slate-800">
+                        {entry.playerName}
+                      </span>
+
                       {idx < 3 && (
-                        <span className="text-[10px] font-mono font-bold text-amber-600">
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-200">
                           {rankBadges[idx]}
                         </span>
                       )}
+
                       {isHighlighted && (
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-600 text-white text-[9px] font-mono rounded font-black uppercase shadow-xs">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-600 text-white text-[9px] font-extrabold rounded-full shadow-xs animate-pulse">
                           <Sparkles className="w-2.5 h-2.5 fill-current" />
-                          <span>NEW RECORD</span>
+                          <span>YOU</span>
                         </span>
                       )}
-                    </span>
+                    </div>
 
-                    <span className="text-[10px] text-slate-400 flex items-center gap-2 font-medium font-mono mt-0.5">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-400" />
-                        {entry.formattedTime}
+                    {/* Metadata Row */}
+                    <div className="flex items-center gap-2 font-mono text-[10px] text-slate-500 font-bold mt-1">
+                      <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60">
+                        {entry.totalSketchesCompleted || 20}/20 Sketches
                       </span>
                       <span>•</span>
-                      <span>{entry.date}</span>
-                    </span>
+                      <span className="flex items-center gap-0.5">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        {formatSeconds(entry.completionTime)}
+                      </span>
+                      <span>•</span>
+                      <span className="text-amber-600 font-sans font-semibold">
+                        {getRemainingTimeString(entry.expiresAt)}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Right: Accuracy & Score */}
-                <div className="flex items-center gap-4 text-right">
-                  <div>
-                    <span className="text-xs font-bold text-slate-600 font-mono block">
+                {/* Right Section: Score & Accuracy */}
+                <div className="flex items-center gap-3 text-right shrink-0">
+                  <div className="hidden sm:block">
+                    <span className="text-xs font-bold text-slate-700 font-mono block">
                       Acc: {entry.accuracy}%
                     </span>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      Skips: {entry.skipsUsed}/3
+                    <span className="text-[9px] text-slate-400 font-mono font-bold block">
+                      Conf: {entry.averageConfidence || entry.accuracy}%
                     </span>
                   </div>
 
-                  <div className="font-mono text-right min-w-[60px]">
-                    <span className="text-base font-black text-blue-600 tracking-tight block leading-tight">
+                  <div className="bg-white/80 border border-slate-200/70 px-3 py-1.5 rounded-xl font-mono text-right min-w-[70px]">
+                    <span className="text-base font-black text-amber-600 tracking-tight block leading-tight">
                       {entry.score}
                     </span>
-                    <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-widest">
+                    <span className="text-[8px] font-bold text-slate-400 block uppercase tracking-wider">
                       PTS
                     </span>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             );
           })
         )}
       </div>
 
-      {/* Confirm Reset Modal */}
-      {showConfirmReset && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center border border-slate-200 shadow-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center mx-auto mb-3">
-              <ShieldAlert className="w-6 h-6" />
-            </div>
-            <h4 className="text-lg font-black text-slate-800 mb-1">Reset Leaderboard?</h4>
-            <p className="text-xs text-slate-500 mb-6">
-              This will erase all recorded orientation scores permanently. Are you sure?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowConfirmReset(false)}
-                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={clearLeaderboard}
-                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-md"
-              >
-                Yes, Clear All
-              </button>
-            </div>
+      {/* Confirm Clear Modal */}
+      <AnimatePresence>
+        {showConfirmReset && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 max-w-sm w-full text-center border border-slate-200 shadow-2xl"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center mx-auto mb-3">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <h4 className="text-lg font-black text-slate-800 mb-1">Clear Event Board?</h4>
+              <p className="text-xs text-slate-500 mb-6 font-medium">
+                This will wipe all active scores from today's challenge. This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowConfirmReset(false)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleClear}
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-md"
+                >
+                  Confirm Clear
+                </button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }

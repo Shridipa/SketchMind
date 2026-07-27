@@ -17,16 +17,31 @@ export interface Achievement {
   color: string; // Tailwind color class for badge background
 }
 
-export interface LeaderboardEntry {
+export interface DailyLeaderboardEntry {
   id: string;
-  name: string;
-  completionTime: number; // In seconds
-  formattedTime: string; // "02:15"
+  playerName: string;
   score: number;
-  accuracy: number; // percentage (e.g. 92)
+  completionTime: number; // In seconds
+  totalSketchesCompleted: number;
+  accuracy: number; // percentage (0-100)
+  averageConfidence: number;
   skipsUsed: number;
-  date: string;
-  difficultyCompleted: string;
+  difficultyReached: number;
+  completedAt: number; // timestamp ms
+  expiresAt: number; // timestamp ms (+24 hours)
+}
+
+export interface DailyLeaderboardStore {
+  version: number;
+  lastCleanup: number;
+  entries: DailyLeaderboardEntry[];
+}
+
+export interface LeaderboardEntry extends DailyLeaderboardEntry {
+  name?: string;
+  formattedTime?: string;
+  date?: string;
+  difficultyCompleted?: string;
 }
 
 export interface Challenge {

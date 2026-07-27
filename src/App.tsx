@@ -33,7 +33,8 @@ import DebugPanel from './components/DebugPanel';
 import EndScreen from './components/EndScreen';
 import CircularTimer from './components/CircularTimer';
 import { soundManager } from './components/SoundManager';
-import { CATEGORIES, CHALLENGES_20, extractFeatures, predictDrawing, enhancedPredictDrawing, getTargetThreshold, checkPartialCredit } from './utils/mlEngine';
+import { CATEGORIES, CHALLENGES_20, extractFeatures, predictDrawing, enhancedPredictDrawing, getTargetThreshold, checkPartialCredit, evaluateDecisionEngine } from './utils/mlEngine';
+import { cleanupExpiredScores } from './utils/leaderboardService';
 
 function getMaxTimeForDifficulty(difficulty?: string): number {
   switch (difficulty) {
@@ -53,6 +54,7 @@ export default function App() {
   const [showTutorial, setShowTutorial] = useState(false);
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoAdvanceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const rollingBufferRef = useRef<Prediction[][]>([]);
   const lastDrawingStateRef = useRef<{
     ctx: CanvasRenderingContext2D;
@@ -121,9 +123,10 @@ export default function App() {
   const [achievementNotification, setAchievementNotification] = useState<string | null>(null);
   const [highlightedLeaderboardId, setHighlightedLeaderboardId] = useState<string | undefined>(undefined);
 
-  // Sound sync
+  // Initialization & cleanup
   useEffect(() => {
     setIsMuted(soundManager.getMuteStatus());
+    cleanupExpiredScores();
   }, []);
 
   // Global game stopwatch
@@ -235,6 +238,10 @@ export default function App() {
   };
 
   const startSketch = (idx: number, list = sketchList) => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
     setTimeSpentOnCurrentSketch(0);
     setPredictions([]);
     setGrayscale(Array(28).fill(0).map(() => Array(28).fill(0)));
@@ -265,7 +272,8 @@ export default function App() {
     width: number,
     height: number,
     strokeCount: number,
-    strokePoints: { x: number; y: number }[][]
+    strokePoints: { x: number; y: number }[][],
+    isStrokeActive: boolean = false
   ) => {
     if (gameState !== 'playing' || autoAdvanceNotice) return;
 
@@ -287,7 +295,7 @@ export default function App() {
       return;
     }
 
-    // 2. Debounce Softmax predictions (250ms) to prevent inference thrashing while drawing
+    // 2. Debounce Softmax predictions (200ms) to prevent inference thrashing while drawing
     debounceTimerRef.current = setTimeout(() => {
       const rawResults = predictDrawing(extracted, grayscale28, inkCount);
 
@@ -336,9 +344,23 @@ export default function App() {
       );
       let confidence = targetMatch ? Math.round(targetMatch.probability * 100) : 0;
 
+      // Evaluate Multi-Layer Recognition Decision Engine
+      const decision = evaluateDecisionEngine(
+        activeChallenge.word,
+        extracted,
+        inkCount,
+        confidence,
+        targetThreshold,
+        grayscale28
+      );
+
+      const effectiveConfidence = Math.max(confidence, decision.finalScore);
+
       // Smart Recognition Recovery Boost at >=20s if close
-      if (timeSpentOnCurrentSketch >= 20 && confidence >= targetThreshold - 15) {
-        confidence = Math.min(100, confidence + 15);
+      if (timeSpentOnCurrentSketch >= 20 && effectiveConfidence >= targetThreshold - 15) {
+        confidence = Math.min(100, effectiveConfidence + 15);
+      } else {
+        confidence = effectiveConfidence;
       }
 
       // Save best drawing for masterpiece plaque
@@ -361,15 +383,15 @@ export default function App() {
         }
       }
 
-      // Goal threshold check
-      if (confidence >= targetThreshold) {
+      // Goal threshold check: ONLY trigger success when user completes stroke (!isStrokeActive) and Object Gatekeeper passes
+      if (!isStrokeActive && decision.isSuccess) {
         let awardedPoints = 70;
-        if (confidence >= 90) awardedPoints = 100;
+        if (decision.finalScore >= 85) awardedPoints = 100;
         if (partialCreditNotice) awardedPoints += partialCreditNotice.points;
 
-        triggerSketchSuccess(awardedPoints, confidence);
+        triggerSketchSuccess(awardedPoints, decision.finalScore);
       }
-    }, 250);
+    }, 200);
   }, [gameState, currentSketchIdx, sketchList, autoAdvanceNotice, bestDrawing, timeSpentOnCurrentSketch, isAdaptiveActive, partialCreditNotice]);
 
   // Handle successful recognition
@@ -386,8 +408,8 @@ export default function App() {
     soundManager.playCorrect();
     try {
       confetti({
-        particleCount: 50,
-        spread: 60,
+        particleCount: 55,
+        spread: 65,
         origin: { y: 0.7 }
       });
     } catch (e) {
@@ -428,16 +450,20 @@ export default function App() {
 
     setUnlockedAchievements(updatedBadges);
 
-    // Show quick auto-advance toast and advance after 1.2s
+    // Show quick auto-advance toast and advance after 2.0s
     setAutoAdvanceNotice({
       word: activeChallenge.word,
       points: awardedPoints,
       confidence
     });
 
-    setTimeout(() => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+    }
+
+    autoAdvanceTimerRef.current = setTimeout(() => {
       proceedToNextSketch();
-    }, 1200);
+    }, 2000);
   };
 
   // Handle Skipping
@@ -460,6 +486,12 @@ export default function App() {
   };
 
   const proceedToNextSketch = () => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+    setAutoAdvanceNotice(null);
+
     if (currentSketchIdx < 19) {
       const nextIdx = currentSketchIdx + 1;
       setCurrentSketchIdx(nextIdx);
@@ -745,11 +777,22 @@ export default function App() {
                     initial={{ opacity: 0, scale: 0.9, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.9, y: -20 }}
-                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-xs pointer-events-none"
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs pointer-events-auto"
                   >
-                    <div className="bg-white/95 backdrop-blur-xl border border-white shadow-2xl rounded-3xl p-6 text-center max-w-xs w-full">
+                    <div className="bg-white/95 backdrop-blur-xl border border-white/80 shadow-2xl rounded-3xl p-6 text-center max-w-sm w-full relative overflow-hidden">
+                      {/* Animated Progress Countdown Bar */}
+                      <motion.div
+                        initial={{ width: '100%' }}
+                        animate={{ width: '0%' }}
+                        transition={{ duration: 2.0, ease: 'linear' }}
+                        className="absolute top-0 left-0 right-0 h-1.5 bg-emerald-500"
+                      />
+
                       <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3 shadow-sm">
                         <CheckCircle2 className="w-8 h-8" />
+                      </div>
+                      <div className="inline-block px-3 py-1 rounded-full bg-emerald-100/80 text-emerald-800 text-[11px] font-black tracking-wide uppercase mb-2">
+                        Sketch Completed! 🎉
                       </div>
                       <h3 className="text-xl font-black text-slate-800 tracking-tight">
                         "{autoAdvanceNotice.word}" Recognized!
@@ -757,6 +800,16 @@ export default function App() {
                       <p className="text-xs text-slate-500 font-bold mt-1">
                         +{autoAdvanceNotice.points} Points ({autoAdvanceNotice.confidence}% Confidence)
                       </p>
+
+                      <div className="mt-5 flex items-center justify-center gap-3">
+                        <button
+                          onClick={() => proceedToNextSketch()}
+                          className="cursor-pointer w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold text-xs rounded-xl shadow-md hover:from-emerald-700 hover:to-teal-700 transition-all flex items-center justify-center gap-2"
+                        >
+                          <span>Next Sketch Now</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </motion.div>
                 )}

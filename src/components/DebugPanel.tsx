@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Bug, X, Terminal, Cpu, CheckCircle, AlertCircle } from 'lucide-react';
+import { Bug, X, CheckCircle, AlertCircle, Cpu, Activity, ShieldCheck, Layers } from 'lucide-react';
 import { DrawingFeatures, Prediction } from '../types';
+import { evaluateDecisionEngine, RecognitionDecision } from '../utils/mlEngine';
 
 interface DebugPanelProps {
   isOpen: boolean;
@@ -26,7 +27,6 @@ export default function DebugPanel({
 }: DebugPanelProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Render 28x28 matrix onto a debug preview canvas
   useEffect(() => {
     if (!canvasRef.current || !grayscale28 || grayscale28.length !== 28) return;
     const canvas = canvasRef.current;
@@ -38,11 +38,10 @@ export default function DebugPanel({
       for (let x = 0; x < 28; x++) {
         const val = grayscale28[y]?.[x] || 0;
         const idx = (y * 28 + x) * 4;
-        // Draw inverted black stroke on white background for preview clarity
-        imgData.data[idx] = 255 - val;     // R
-        imgData.data[idx + 1] = 255 - val; // G
-        imgData.data[idx + 2] = 255 - val; // B
-        imgData.data[idx + 3] = 255;       // Alpha
+        imgData.data[idx] = 255 - val;
+        imgData.data[idx + 1] = 255 - val;
+        imgData.data[idx + 2] = 255 - val;
+        imgData.data[idx + 3] = 255;
       }
     }
     ctx.putImageData(imgData, 0, 0);
@@ -53,8 +52,26 @@ export default function DebugPanel({
   const targetPrediction = predictions.find(
     p => p.className.toLowerCase().trim() === targetWord.toLowerCase().trim()
   );
-  const currentConfidence = targetPrediction ? Math.round(targetPrediction.probability * 100) : 0;
-  const isEvaluatedTrue = currentConfidence >= targetThreshold;
+  const tfConfidence = targetPrediction ? Math.round(targetPrediction.probability * 100) : 0;
+
+  const decision: RecognitionDecision = features
+    ? evaluateDecisionEngine(targetWord, features, totalInkPixels, tfConfidence, targetThreshold, grayscale28)
+    : {
+        targetWord,
+        categoryType: 'simple',
+        geometryScore: 0,
+        featureScore: 0,
+        shapeSimilarity: 0,
+        mlConfidence: tfConfidence,
+        strokeQuality: 0,
+        structuralPassed: false,
+        missingFeatures: ['Awaiting drawing...'],
+        finalScore: 0,
+        targetThreshold,
+        isSuccess: false,
+        essentialMatched: false,
+        primaryReason: 'Awaiting drawing...'
+      };
 
   return (
     <motion.div
@@ -67,7 +84,7 @@ export default function DebugPanel({
       <div className="bg-slate-800/90 px-4 py-2.5 flex items-center justify-between border-b border-slate-700/80">
         <div className="flex items-center gap-2">
           <Bug className="w-4 h-4 text-emerald-400" />
-          <span className="font-bold text-slate-200">ML Inference Pipeline Debugger</span>
+          <span className="font-bold text-slate-200">Recognition Decision Engine</span>
         </div>
         <button
           onClick={onClose}
@@ -78,7 +95,7 @@ export default function DebugPanel({
       </div>
 
       <div className="p-4 space-y-4 max-h-[80vh] overflow-y-auto">
-        {/* Section 1: Preprocessed Tensor Preview */}
+        {/* Tensor Preview */}
         <div className="bg-slate-950/80 rounded-xl p-3 border border-slate-800 flex gap-4 items-center">
           <div>
             <span className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">
@@ -96,114 +113,136 @@ export default function DebugPanel({
 
           <div className="space-y-1 text-[11px] flex-1">
             <div className="flex justify-between border-b border-slate-800/80 pb-1">
+              <span className="text-slate-400">Target Object:</span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-cyan-300">{targetWord}</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 uppercase font-semibold">
+                  {decision.categoryType}
+                </span>
+              </div>
+            </div>
+            <div className="flex justify-between border-b border-slate-800/80 pb-1">
               <span className="text-slate-400">Total Ink Pixels:</span>
               <span className="font-bold text-emerald-400">{totalInkPixels}</span>
             </div>
-            <div className="flex justify-between border-b border-slate-800/80 pb-1">
-              <span className="text-slate-400">Tensor Grid:</span>
-              <span className="font-bold text-slate-200">28 × 28 grayscale</span>
-            </div>
-            <div className="flex justify-between border-b border-slate-800/80 pb-1">
-              <span className="text-slate-400">Polarity:</span>
-              <span className="font-bold text-amber-300">White background / Ink = 255</span>
-            </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Debounce:</span>
-              <span className="font-bold text-blue-400">250ms active</span>
+              <span className="text-slate-400">Target Threshold:</span>
+              <span className="font-bold text-amber-300">{targetThreshold}%</span>
             </div>
           </div>
         </div>
 
-        {/* Section 2: Extracted Features */}
-        {features && (
-          <div className="bg-slate-950/80 rounded-xl p-3 border border-slate-800 space-y-1.5">
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">
-              Extracted Geometry Metrics
+        {/* Structural Validation Box */}
+        <div className={`rounded-xl p-3 border space-y-1.5 ${
+          decision.structuralPassed
+            ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+            : 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase font-bold tracking-wider flex items-center gap-1">
+              <ShieldCheck className={`w-3.5 h-3.5 ${decision.structuralPassed ? 'text-emerald-400' : 'text-rose-400'}`} />
+              Stage 2: Structural Validation
             </span>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Aspect Ratio:</span>
-                <span className="font-bold text-cyan-300">{features.aspectRatio.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Circularity:</span>
-                <span className="font-bold text-cyan-300">{features.circularity.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Density:</span>
-                <span className="font-bold text-cyan-300">{(features.density * 100).toFixed(1)}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Corners:</span>
-                <span className="font-bold text-amber-400">{features.cornerCount}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Closed Loop:</span>
-                <span className={`font-bold ${features.hasClosedLoop ? 'text-emerald-400' : 'text-slate-500'}`}>
-                  {features.hasClosedLoop ? 'YES' : 'NO'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Symm H/V:</span>
-                <span className="font-bold text-purple-300">
-                  {features.symmetryHorizontal.toFixed(2)} / {features.symmetryVertical.toFixed(2)}
-                </span>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+              decision.structuralPassed ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+            }`}>
+              {decision.structuralPassed ? 'PASSED' : 'FAILED'}
+            </span>
+          </div>
+
+          {!decision.structuralPassed && decision.missingFeatures.length > 0 && (
+            <div className="mt-1 pt-1 border-t border-rose-800/50 space-y-0.5">
+              <span className="text-[10px] text-rose-300 font-semibold block">Missing Essential Features:</span>
+              <ul className="list-disc list-inside text-[10px] text-rose-200/90 pl-1 space-y-0.5">
+                {decision.missingFeatures.map((feat, i) => (
+                  <li key={i}>{feat}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        {/* Multi-Signal Score Breakdown */}
+        <div className="bg-slate-950/80 rounded-xl p-3 border border-slate-800 space-y-2">
+          <div className="flex justify-between items-center border-b border-slate-800 pb-1">
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider flex items-center gap-1">
+              <Layers className="w-3 h-3 text-purple-400" /> Multi-Signal Score Breakdown
+            </span>
+            <span className="text-[10px] text-slate-500">Weight</span>
+          </div>
+
+          <div className="space-y-1.5 text-[11px]">
+            <div className="flex justify-between items-center">
+              <span className="text-slate-300">Geometry Score</span>
+              <div className="flex gap-2 items-center">
+                <span className="text-[10px] text-slate-500">25%</span>
+                <span className="font-bold text-emerald-400">{decision.geometryScore}%</span>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Section 3: Target Match Status */}
-        <div className={`rounded-xl p-3 border flex items-center justify-between ${
-          isEvaluatedTrue
-            ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
-            : 'bg-amber-950/40 border-amber-500/50 text-amber-200'
+            <div className="flex justify-between items-center">
+              <span className="text-slate-300">Feature Detection</span>
+              <div className="flex gap-2 items-center">
+                <span className="text-[10px] text-slate-500">10%</span>
+                <span className="font-bold text-cyan-400">{decision.featureScore}%</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <span className="text-slate-300">Shape Similarity</span>
+              <div className="flex gap-2 items-center">
+                <span className="text-[10px] text-slate-500">20%</span>
+                <span className="font-bold text-purple-400">{decision.shapeSimilarity}%</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <span className="text-slate-300">TensorFlow Confidence</span>
+              <div className="flex gap-2 items-center">
+                <span className="text-[10px] text-slate-500">40%</span>
+                <span className="font-bold text-blue-400">{decision.mlConfidence}%</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <span className="text-slate-300">Stroke Quality</span>
+              <div className="flex gap-2 items-center">
+                <span className="text-[10px] text-slate-500">5%</span>
+                <span className="font-bold text-amber-400">{decision.strokeQuality}%</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center pt-1 border-t border-slate-800 font-bold">
+              <span className="text-white">Final Decision Score</span>
+              <span className="text-emerald-300">{decision.finalScore}%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Decision Banner */}
+        <div className={`rounded-xl p-3 border space-y-1 ${
+          decision.isSuccess
+            ? 'bg-emerald-950/50 border-emerald-500/50 text-emerald-200'
+            : 'bg-slate-950/80 border-slate-800 text-slate-300'
         }`}>
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              {isEvaluatedTrue ? (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 font-bold">
+              {decision.isSuccess ? (
                 <CheckCircle className="w-4 h-4 text-emerald-400" />
               ) : (
                 <AlertCircle className="w-4 h-4 text-amber-400" />
               )}
-              <span className="font-bold">
-                Target: {targetWord} ({currentConfidence}% / {targetThreshold}%)
-              </span>
+              <span>Decision: {decision.isSuccess ? 'SUCCESS' : 'EVALUATING'}</span>
             </div>
-            <div className="text-[10px] opacity-80">
-              Normalized match: "<span className="text-white">{targetWord.toLowerCase().trim()}</span>"
-            </div>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+              decision.isSuccess ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-400'
+            }`}>
+              {decision.isSuccess ? 'ACCEPTED' : 'IN PROGRESS'}
+            </span>
           </div>
-          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-            isEvaluatedTrue ? 'bg-emerald-500 text-slate-950' : 'bg-amber-500 text-slate-950'
-          }`}>
-            {isEvaluatedTrue ? 'PASSED' : 'EVALUATING'}
-          </span>
-        </div>
 
-        {/* Section 4: Top 5 Softmax Predictions */}
-        <div className="bg-slate-950/80 rounded-xl p-3 border border-slate-800 space-y-2">
-          <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
-            Top 5 Softmax Predictions
-          </span>
-          <div className="space-y-1.5">
-            {predictions.slice(0, 5).map((p, idx) => {
-              const isTarget = p.className.toLowerCase().trim() === targetWord.toLowerCase().trim();
-              const probPct = Math.round(p.probability * 100);
-
-              return (
-                <div key={p.className} className="flex items-center justify-between text-[11px]">
-                  <span className={`flex items-center gap-1.5 ${isTarget ? 'text-blue-400 font-bold' : 'text-slate-300'}`}>
-                    <span className="text-slate-500">{idx + 1}.</span>
-                    {p.className}
-                    {isTarget && <span className="bg-blue-900/80 text-blue-200 text-[9px] px-1 rounded">GOAL</span>}
-                  </span>
-                  <span className={`font-bold ${isTarget ? 'text-blue-400' : 'text-slate-400'}`}>
-                    {probPct}%
-                  </span>
-                </div>
-              );
-            })}
+          <div className="text-[10px] text-slate-400 leading-snug">
+            Reason: <span className="text-slate-200 font-medium">{decision.primaryReason}</span>
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Brain, Sparkles, CheckCircle2, Activity, Search, Target, Zap } from 'lucide-react';
 import { Prediction } from '../types';
+import { getFriendlyRecognitionStatus } from '../utils/mlEngine';
 
 interface ConfidencePanelProps {
   predictions: Prediction[];
@@ -28,35 +29,23 @@ export default function ConfidencePanel({
   const targetConfidence = targetPrediction ? Math.round(targetPrediction.probability * 100) : 0;
   const top4 = predictions.slice(0, 4);
 
-  // Determine Visual Recognition Meter stage
+  const status = getFriendlyRecognitionStatus(targetWord, targetConfidence, targetThreshold, totalInkPixels);
+
   const getRecognitionStage = (confidence: number) => {
     if (confidence >= targetThreshold) {
-      return { stage: '✅ Sketch recognized!', icon: CheckCircle2, color: 'text-emerald-600 bg-emerald-50 border-emerald-200' };
+      return { stage: status.stage, icon: CheckCircle2, color: 'text-emerald-600 bg-emerald-50 border-emerald-200' };
     }
-    if (confidence >= Math.max(50, targetThreshold - 10)) {
-      return { stage: '🎯 Almost recognized...', icon: Target, color: 'text-blue-600 bg-blue-50 border-blue-200' };
+    if (confidence >= Math.max(45, targetThreshold - 15)) {
+      return { stage: status.stage, icon: Target, color: 'text-blue-600 bg-blue-50 border-blue-200' };
     }
-    if (confidence >= 35) {
-      return { stage: '✨ Matching patterns...', icon: Sparkles, color: 'text-purple-600 bg-purple-50 border-purple-200' };
+    if (confidence >= 25) {
+      return { stage: status.stage, icon: Sparkles, color: 'text-purple-600 bg-purple-50 border-purple-200' };
     }
-    if (confidence >= 15) {
-      return { stage: '🧠 Understanding shapes...', icon: Brain, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' };
-    }
-    return { stage: '🔍 Looking...', icon: Search, color: 'text-slate-600 bg-slate-50 border-slate-200' };
+    return { stage: status.stage, icon: Search, color: 'text-slate-600 bg-slate-50 border-slate-200' };
   };
 
   const currentMeter = getRecognitionStage(targetConfidence);
   const StageIcon = currentMeter.icon;
-
-  // Friendly AI Feedback message
-  const getAiFeedbackText = (confidence: number) => {
-    if (totalInkPixels < 35) return "Draw something to start...";
-    if (confidence >= targetThreshold) return `That looks like a great ${targetWord}! Perfect!`;
-    if (confidence >= Math.max(50, targetThreshold - 10)) return `I think I see a ${targetWord}! Almost there!`;
-    if (confidence >= 35) return `Good progress! Keep adding essential shapes...`;
-    if (confidence >= 15) return `Analyzing stroke patterns...`;
-    return "Start drawing basic outlines...";
-  };
 
   return (
     <div className="bg-white/80 backdrop-blur-xl border border-white/80 shadow-lg rounded-[2rem] p-5 flex flex-col justify-between h-full">
@@ -101,7 +90,7 @@ export default function ConfidencePanel({
                 <span>{isThinking ? '🧠 Inferring Features...' : currentMeter.stage}</span>
               </div>
               <p className="text-[11px] font-medium opacity-90 leading-tight">
-                {isThinking ? 'Calculating feature vectors & probabilities...' : getAiFeedbackText(targetConfidence)}
+                {isThinking ? 'Calculating feature vectors & probabilities...' : status.feedback}
               </p>
             </div>
           </div>

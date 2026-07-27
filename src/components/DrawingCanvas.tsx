@@ -18,7 +18,8 @@ interface DrawingCanvasProps {
     width: number,
     height: number,
     strokeCount: number,
-    strokePoints: { x: number; y: number }[][]
+    strokePoints: { x: number; y: number }[][],
+    isStrokeActive?: boolean
   ) => void;
   targetObjectTip?: string;
 }
@@ -123,7 +124,7 @@ export default function DrawingCanvas({ onDrawingChange }: DrawingCanvasProps) {
   }, [dimensions, redrawCanvas]);
 
   // Notify parent of drawing change for ML recognition
-  const triggerAnalysis = useCallback((historyToUse: StrokePoint[][]) => {
+  const triggerAnalysis = useCallback((historyToUse: StrokePoint[][], isStrokeActive: boolean = false) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -133,7 +134,7 @@ export default function DrawingCanvas({ onDrawingChange }: DrawingCanvasProps) {
       .filter(stroke => stroke.length > 0 && stroke[0].tool === 'pencil')
       .map(stroke => stroke.map(p => ({ x: p.x, y: p.y })));
 
-    onDrawingChange(ctx, dimensions.width, dimensions.height, formattedPoints.length, formattedPoints);
+    onDrawingChange(ctx, dimensions.width, dimensions.height, formattedPoints.length, formattedPoints, isStrokeActive);
   }, [dimensions, onDrawingChange]);
 
   // Get point attributes with accurate coordinate scaling & stylus pressure calculation
@@ -316,7 +317,7 @@ export default function DrawingCanvas({ onDrawingChange }: DrawingCanvasProps) {
       else soundManager.playEraser();
     }
 
-    triggerAnalysis([...strokeHistoryRef.current, currentStrokeRef.current]);
+    triggerAnalysis([...strokeHistoryRef.current, currentStrokeRef.current], true);
   };
 
   const stopDrawing = (e?: React.PointerEvent<HTMLCanvasElement>) => {
@@ -341,7 +342,7 @@ export default function DrawingCanvas({ onDrawingChange }: DrawingCanvasProps) {
     if (finishedStroke.length > 0) {
       const newHistory = [...strokeHistoryRef.current, finishedStroke];
       updateStrokeHistory(newHistory);
-      triggerAnalysis(newHistory);
+      triggerAnalysis(newHistory, false);
     }
   };
 
@@ -411,7 +412,7 @@ export default function DrawingCanvas({ onDrawingChange }: DrawingCanvasProps) {
     if (!ctx) return;
 
     ctx.clearRect(0, 0, dimensions.width, dimensions.height);
-    onDrawingChange(ctx, dimensions.width, dimensions.height, 0, []);
+    onDrawingChange(ctx, dimensions.width, dimensions.height, 0, [], false);
     soundManager.playClick();
   }, [dimensions, onDrawingChange]);
 

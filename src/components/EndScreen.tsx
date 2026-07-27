@@ -4,7 +4,7 @@ import { Award, RefreshCw, Trophy, Sparkles, User, HelpCircle, Clock, CheckCircl
 import confetti from 'canvas-confetti';
 import AchievementsPanel from './AchievementsPanel';
 import { soundManager } from './SoundManager';
-import { LeaderboardEntry } from '../types';
+import { addScore } from '../utils/leaderboardService';
 
 interface EndScreenProps {
   score: number;
@@ -128,38 +128,27 @@ export default function EndScreen({
     e.preventDefault();
     if (!playerName.trim() || isSaved) return;
 
-    const newId = `score_${Date.now()}`;
-    const entry: LeaderboardEntry = {
-      id: newId,
-      name: playerName.trim(),
-      completionTime: totalTimeSeconds,
-      formattedTime,
-      score,
-      date: new Date().toISOString().split('T')[0],
-      accuracy,
-      skipsUsed,
-      difficultyCompleted: `Completed ${sketchesCompleted}/20`
-    };
+    // Minimum completion requirement check: only save if at least 1 sketch finished
+    if (sketchesCompleted < 1) return;
 
-    if (typeof localStorage !== 'undefined') {
-      const stored = localStorage.getItem('sketchmind_leaderboard_20');
-      let parsed: LeaderboardEntry[] = [];
-      if (stored) {
-        try {
-          parsed = JSON.parse(stored);
-        } catch (err) {
-          console.error(err);
-        }
-      }
-      parsed.push(entry);
-      localStorage.setItem('sketchmind_leaderboard_20', JSON.stringify(parsed));
-    }
+    const savedEntry = addScore({
+      playerName: playerName.trim(),
+      score,
+      completionTime: totalTimeSeconds,
+      totalSketchesCompleted: sketchesCompleted,
+      accuracy,
+      averageConfidence: accuracy,
+      skipsUsed,
+      difficultyReached: 4
+    });
+
+    const savedId = savedEntry ? savedEntry.id : undefined;
 
     setIsSaved(true);
     soundManager.playCorrect();
 
     setTimeout(() => {
-      onViewLeaderboard(newId);
+      onViewLeaderboard(savedId);
     }, 600);
   };
 
