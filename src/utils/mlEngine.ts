@@ -1,34 +1,338 @@
-import { DrawingFeatures, Prediction } from '../types';
+import { DrawingFeatures, Prediction, Challenge } from '../types';
 
-// The 10 categories supported by SketchMind
+export function getTargetThreshold(difficulty?: string): number {
+  switch (difficulty) {
+    case 'Very Easy': return 50; // Sketches 1-5 (Circle, Square, Triangle, Heart, Star)
+    case 'Easy': return 55;      // Sketches 6-10 (Sun, Moon, Apple, Fish, Leaf)
+    case 'Medium': return 60;    // Sketches 11-15 (House, Tree, Flower, Cup, Book)
+    case 'Hard': return 75;      // Sketches 16-20 (Car, Rocket, Airplane, Bicycle, Cat)
+    default: return 55;
+  }
+}
+
+export const SEMANTIC_FAMILY_MAP: Record<string, { synonyms: string[]; label: string }> = {
+  'Circle': { synonyms: ['circle', 'sun', 'moon', 'apple', 'heart', 'flower'], label: 'Round geometry detected!' },
+  'Square': { synonyms: ['square', 'house', 'book', 'cup', 'car'], label: 'Box/quadrilateral structure detected!' },
+  'Triangle': { synonyms: ['triangle', 'star', 'rocket', 'house', 'cat'], label: 'Apex/angular geometry detected!' },
+  'Star': { synonyms: ['star', 'sun', 'triangle', 'flower'], label: 'Radiating point pattern detected!' },
+  'Heart': { synonyms: ['heart', 'apple', 'circle', 'leaf'], label: 'Symmetric heart curve detected!' },
+  'Sun': { synonyms: ['sun', 'circle', 'star', 'flower'], label: 'Solar core pattern detected!' },
+  'Moon': { synonyms: ['moon', 'circle', 'leaf', 'fish'], label: 'Crescent curve detected!' },
+  'Apple': { synonyms: ['apple', 'circle', 'heart', 'sun'], label: 'Fruit body & stem detected!' },
+  'Fish': { synonyms: ['fish', 'moon', 'leaf', 'airplane'], label: 'Swimmer body & tail detected!' },
+  'Leaf': { synonyms: ['leaf', 'tree', 'flower', 'moon'], label: 'Plant leaf contour detected!' },
+  'House': { synonyms: ['house', 'square', 'triangle', 'book'], label: 'Building roof & box base detected!' },
+  'Tree': { synonyms: ['tree', 'plant', 'leaf', 'flower', 'rocket'], label: 'Trunk & canopy structure detected!' },
+  'Flower': { synonyms: ['flower', 'tree', 'sun', 'star', 'circle'], label: 'Petal & core pattern detected!' },
+  'Cup': { synonyms: ['cup', 'house', 'square', 'circle'], label: 'Container & handle shape detected!' },
+  'Book': { synonyms: ['book', 'square', 'house', 'car'], label: 'Rectangular page layout detected!' },
+  'Car': { synonyms: ['car', 'square', 'book', 'cup'], label: 'Chassis & dual wheel base detected!' },
+  'Rocket': { synonyms: ['rocket', 'triangle', 'tree', 'airplane'], label: 'Cone tip & tube fuselage detected!' },
+  'Airplane': { synonyms: ['airplane', 'rocket', 'fish', 'star'], label: 'Fuselage & wing structure detected!' },
+  'Bicycle': { synonyms: ['bicycle', 'circle', 'car'], label: 'Dual wheel frame structure detected!' },
+  'Cat': { synonyms: ['cat', 'triangle', 'circle', 'star'], label: 'Cat ear & head geometry detected!' }
+};
+
+export function checkPartialCredit(
+  targetWord: string,
+  topPredictionName: string
+): { isPartial: boolean; bonusPoints: number; message: string } {
+  const target = targetWord.toLowerCase().trim();
+  const top = topPredictionName.toLowerCase().trim();
+
+  // Find target in semantic mapping
+  const targetEntry = Object.entries(SEMANTIC_FAMILY_MAP).find(
+    ([k]) => k.toLowerCase() === target
+  );
+
+  if (targetEntry) {
+    const [, info] = targetEntry;
+    if (info.synonyms.includes(top) && top !== target) {
+      return {
+        isPartial: true,
+        bonusPoints: 25,
+        message: `${info.label} (+25 Bonus)`
+      };
+    }
+  }
+
+  return { isPartial: false, bonusPoints: 0, message: '' };
+}
+
+// The 20 categories for the 20-Sketch Challenge
 export const CATEGORIES = [
-  'Apple',
+  'Circle',
+  'Square',
+  'Triangle',
   'Star',
+  'Heart',
+  'Sun',
+  'Moon',
+  'Apple',
   'Fish',
+  'Leaf',
   'House',
   'Tree',
+  'Flower',
+  'Cup',
+  'Book',
   'Car',
-  'Bicycle',
+  'Rocket',
   'Airplane',
-  'Cat',
-  'Flower'
+  'Bicycle',
+  'Cat'
 ];
 
-export const CATEGORY_DETAILS: Record<string, { description: string; tips: string }> = {
-  Apple: { description: 'A round fruit with a small stem on top.', tips: 'Draw a circle and add a short vertical line at the top.' },
-  Star: { description: 'A classic 5-pointed celestial star.', tips: 'Draw 5 sharp points, either in one continuous outline or intersecting.' },
-  Fish: { description: 'An aquatic swimmer with a tail and body.', tips: 'Draw a horizontal oval or teardrop with a triangular tail at one end.' },
-  House: { description: 'A rectangular building with a triangular roof.', tips: 'Draw a square base and put a triangle on top of it.' },
-  Tree: { description: 'A plant with a narrow trunk and a fluffy canopy.', tips: 'Draw a vertical line or trunk at the bottom, and a cloud-like circle on top.' },
-  Car: { description: 'A passenger vehicle with wheels and a cab.', tips: 'Draw a long horizontal chassis, a raised cabin box, and two round circles underneath.' },
-  Bicycle: { description: 'A two-wheeled pedaled vehicle.', tips: 'Draw two separate circles side-by-side, and connect them with a few straight lines.' },
-  Airplane: { description: 'A winged aircraft flying horizontally.', tips: 'Draw a central long tube (fuselage) with horizontal wings crossing it.' },
-  Cat: { description: 'A feline face with pointy ears and whiskers.', tips: 'Draw a circle for the head, two small triangles on top for ears, and lines for whiskers.' },
-  Flower: { description: 'A plant with a center disc, petals, and a stem.', tips: 'Draw a small central circle, surrounding round petals, and a stem going down.' }
-};
+export const CHALLENGES_20: Challenge[] = [
+  // Sketches 1-5 (Very Easy - 55% Threshold)
+  {
+    id: 'ch-1',
+    word: 'Circle',
+    level: 1,
+    difficulty: 'Very Easy',
+    description: 'A simple round closed loop.',
+    hints: [
+      'Draw a simple round O shape.',
+      'Single continuous curve with no sharp corners.',
+      'Any smooth round loop works!'
+    ]
+  },
+  {
+    id: 'ch-2',
+    word: 'Square',
+    level: 1,
+    difficulty: 'Very Easy',
+    description: 'Four connected straight lines.',
+    hints: [
+      'Draw a square box.',
+      '4 connected straight lines forming corners.',
+      'Equal width and height box.'
+    ]
+  },
+  {
+    id: 'ch-3',
+    word: 'Triangle',
+    level: 1,
+    difficulty: 'Very Easy',
+    description: 'Three straight sides connected at corners.',
+    hints: [
+      'Draw a pyramid shape.',
+      '3 connected sharp corners.',
+      'Like a pointing arrow or roof peak.'
+    ]
+  },
+  {
+    id: 'ch-4',
+    word: 'Star',
+    level: 1,
+    difficulty: 'Very Easy',
+    description: 'A 5-pointed star shape.',
+    hints: [
+      'Draw 5 sharp points radiating outward.',
+      'Cross lines or outline a star.',
+      'Classic 5-point celestial icon.'
+    ]
+  },
+  {
+    id: 'ch-5',
+    word: 'Heart',
+    level: 1,
+    difficulty: 'Very Easy',
+    description: 'Two rounded top arches meeting at a bottom V.',
+    hints: [
+      'Classic love heart symbol.',
+      'Two rounded bumps on top angled down to a tip.',
+      'Symmetric heart curve.'
+    ]
+  },
+  // Sketches 6-10 (Easy - 65% Threshold)
+  {
+    id: 'ch-6',
+    word: 'Sun',
+    level: 2,
+    difficulty: 'Easy',
+    description: 'A circle with short rays around it.',
+    hints: [
+      'Draw a circle in the center.',
+      'Add short lines radiating out like beams.',
+      'Circle plus ray strokes.'
+    ]
+  },
+  {
+    id: 'ch-7',
+    word: 'Moon',
+    level: 2,
+    difficulty: 'Easy',
+    description: 'A crescent moon curve.',
+    hints: [
+      'Draw a simple C-curve or crescent.',
+      'Outer curve met by an inner curve.',
+      'Banana crescent shape.'
+    ]
+  },
+  {
+    id: 'ch-8',
+    word: 'Apple',
+    level: 2,
+    difficulty: 'Easy',
+    description: 'A round fruit body with a stem on top.',
+    hints: [
+      'Draw a round fruit outline.',
+      'Add a small vertical stem line on top.',
+      'Optional leaf line off the stem.'
+    ]
+  },
+  {
+    id: 'ch-9',
+    word: 'Fish',
+    level: 2,
+    difficulty: 'Easy',
+    description: 'Oval body with a triangular tail.',
+    hints: [
+      'Draw an oval body.',
+      'Add a triangle tail fin on one side.',
+      'Simple swimmer shape.'
+    ]
+  },
+  {
+    id: 'ch-10',
+    word: 'Leaf',
+    level: 2,
+    difficulty: 'Easy',
+    description: 'Tapered oval with a center vein.',
+    hints: [
+      'Draw a teardrop leaf outline.',
+      'Add a line down the center.',
+      'Plant leaf contour.'
+    ]
+  },
+  // Sketches 11-15 (Medium - 75% Threshold)
+  {
+    id: 'ch-11',
+    word: 'House',
+    level: 3,
+    difficulty: 'Medium',
+    description: 'Square base with a triangle roof.',
+    hints: [
+      'Draw a square box for the base.',
+      'Add a triangle roof on top.',
+      'Door and windows are optional!'
+    ]
+  },
+  {
+    id: 'ch-12',
+    word: 'Tree',
+    level: 3,
+    difficulty: 'Medium',
+    description: 'Vertical trunk with a round cloud canopy.',
+    hints: [
+      'Draw a straight vertical trunk.',
+      'Add a puffy round canopy on top.',
+      'No individual leaf details needed!'
+    ]
+  },
+  {
+    id: 'ch-13',
+    word: 'Flower',
+    level: 3,
+    difficulty: 'Medium',
+    description: 'Center circle surrounded by petals.',
+    hints: [
+      'Draw a small circle in the center.',
+      'Add petal loops around the circle.',
+      'Add a straight stem going down.'
+    ]
+  },
+  {
+    id: 'ch-14',
+    word: 'Cup',
+    level: 3,
+    difficulty: 'Medium',
+    description: 'Mug container with a side handle loop.',
+    hints: [
+      'Draw a box or U-shaped cup.',
+      'Add a curved handle loop on the side.',
+      'Simple mug outline.'
+    ]
+  },
+  {
+    id: 'ch-15',
+    word: 'Book',
+    level: 3,
+    difficulty: 'Medium',
+    description: 'Open pages or rectangle notebook.',
+    hints: [
+      'Draw two connected rectangular pages.',
+      'Add horizontal lines across pages.',
+      'Simple open book outline.'
+    ]
+  },
+  // Sketches 16-20 (Hard - 85% Threshold)
+  {
+    id: 'ch-16',
+    word: 'Car',
+    level: 4,
+    difficulty: 'Hard',
+    description: 'Chassis rectangle with two wheels.',
+    hints: [
+      'Draw a horizontal rectangle chassis.',
+      'Add 2 round wheel circles underneath.',
+      'Add a raised cabin roof line.'
+    ]
+  },
+  {
+    id: 'ch-17',
+    word: 'Rocket',
+    level: 4,
+    difficulty: 'Hard',
+    description: 'Tall cylinder with a cone tip and fins.',
+    hints: [
+      'Draw a tall tube pointing up.',
+      'Add a pointed cone top and side fins.',
+      'Spacecraft cone.'
+    ]
+  },
+  {
+    id: 'ch-18',
+    word: 'Airplane',
+    level: 4,
+    difficulty: 'Hard',
+    description: 'Long fuselage crossed by horizontal wings.',
+    hints: [
+      'Draw a central fuselage body line.',
+      'Add two horizontal wings crossing it.',
+      'Cross aircraft shape.'
+    ]
+  },
+  {
+    id: 'ch-19',
+    word: 'Bicycle',
+    level: 4,
+    difficulty: 'Hard',
+    description: 'Two separate circles connected by frame bars.',
+    hints: [
+      'Draw two separate wheel circles.',
+      'Connect them with straight frame lines.',
+      'Add handlebars on top.'
+    ]
+  },
+  {
+    id: 'ch-20',
+    word: 'Cat',
+    level: 4,
+    difficulty: 'Hard',
+    description: 'Round head with pointy triangle ears.',
+    hints: [
+      'Draw a circle for head.',
+      'Add 2 small pointy triangles on top for ears.',
+      'Add whisker lines.'
+    ]
+  }
+];
 
 /**
  * Extracts geometric and structural features from canvas drawing data
+ * Uses aspect-ratio preserving bounding-box crop and centering onto a 28x28 grid
  */
 export function extractFeatures(
   ctx: CanvasRenderingContext2D,
@@ -36,24 +340,23 @@ export function extractFeatures(
   height: number,
   strokeCount: number,
   rawStrokePoints: { x: number; y: number }[][]
-): { features: DrawingFeatures; grayscale28: number[][] } {
+): { features: DrawingFeatures; grayscale28: number[][]; totalInkPixels: number } {
   const imgData = ctx.getImageData(0, 0, width, height);
   const data = imgData.data;
 
-  // 1. Find bounding box of the drawing
+  // 1. Find bounding box of non-empty ink pixels (alpha > 20)
   let minX = width;
-  let maxX = 0;
+  let maxX = -1;
   let minY = height;
-  let maxY = 0;
+  let maxY = -1;
   let totalInkPixels = 0;
 
-  // Let's scan the canvas to locate the drawing boundaries
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = (y * width + x) * 4;
-      const alpha = data[idx + 3]; // Alpha channel contains drawing strokes
+      const alpha = data[idx + 3];
       
-      if (alpha > 20) { // ink threshold
+      if (alpha > 20) {
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
@@ -63,8 +366,8 @@ export function extractFeatures(
     }
   }
 
-  // If nothing drawn, return empty features
-  if (totalInkPixels < 20) {
+  // Blank or near-empty canvas check
+  if (totalInkPixels < 20 || minX > maxX || minY > maxY) {
     const emptyGrayscale = Array(28).fill(0).map(() => Array(28).fill(0));
     return {
       features: {
@@ -79,102 +382,96 @@ export function extractFeatures(
         cornerCount: 0,
         hasClosedLoop: false
       },
-      grayscale28: emptyGrayscale
+      grayscale28: emptyGrayscale,
+      totalInkPixels
     };
   }
 
-  // Add padding to bounding box
-  const padding = 10;
-  minX = Math.max(0, minX - padding);
-  minY = Math.max(0, minY - padding);
-  maxX = Math.min(width - 1, maxX + padding);
-  maxY = Math.min(height - 1, maxY + padding);
-
-  const boxW = maxX - minX + 1;
-  const boxH = maxY - minY + 1;
+  const boxW = Math.max(1, maxX - minX + 1);
+  const boxH = Math.max(1, maxY - minY + 1);
   const aspectRatio = boxW / boxH;
 
-  // 2. Generate 28x28 grayscale image representing what the ML model "sees"
+  // 2. Aspect-Ratio Preserving Center Scaling into 28x28 Grid
+  // Fit max dimension inside target size 22px (leaving 3px padding on all sides)
+  const maxDim = Math.max(boxW, boxH);
+  const targetSize = 22;
+  const scale = targetSize / maxDim;
+
+  const scaledW = boxW * scale;
+  const scaledH = boxH * scale;
+
+  // Center alignment offsets inside 28x28 grid
+  const offsetX = (28 - scaledW) / 2;
+  const offsetY = (28 - scaledH) / 2;
+
   const grayscale28: number[][] = Array(28).fill(0).map(() => Array(28).fill(0));
-  
+
   for (let gy = 0; gy < 28; gy++) {
     for (let gx = 0; gx < 28; gx++) {
-      // Map 28x28 coordinate to bounding box coordinate
-      const startX = Math.floor(minX + (gx / 28) * boxW);
-      const endX = Math.ceil(minX + ((gx + 1) / 28) * boxW);
-      const startY = Math.floor(minY + (gy / 28) * boxH);
-      const endY = Math.ceil(minY + ((gy + 1) / 28) * boxH);
+      const localX = gx - offsetX;
+      const localY = gy - offsetY;
 
-      // Average alpha channel values in this sub-region
-      let sumAlpha = 0;
-      let count = 0;
+      if (localX >= 0 && localX < scaledW && localY >= 0 && localY < scaledH) {
+        const srcXStart = Math.floor(minX + (localX / scaledW) * boxW);
+        const srcXEnd = Math.min(width - 1, Math.ceil(minX + ((localX + 1) / scaledW) * boxW));
+        const srcYStart = Math.floor(minY + (localY / scaledH) * boxH);
+        const srcYEnd = Math.min(height - 1, Math.ceil(minY + ((localY + 1) / scaledH) * boxH));
 
-      for (let py = startY; py < endY; py++) {
-        for (let px = startX; px < endX; px++) {
-          if (px >= 0 && px < width && py >= 0 && py < height) {
-            const idx = (py * width + px) * 4;
-            sumAlpha += data[idx + 3];
-            count++;
+        let sumAlpha = 0;
+        let count = 0;
+
+        for (let py = srcYStart; py <= srcYEnd; py++) {
+          for (let px = srcXStart; px <= srcXEnd; px++) {
+            if (px >= 0 && px < width && py >= 0 && py < height) {
+              const idx = (py * width + px) * 4;
+              sumAlpha += data[idx + 3];
+              count++;
+            }
           }
         }
-      }
 
-      const avgAlpha = count > 0 ? sumAlpha / count : 0;
-      // Normalize to 0-255 scale
-      grayscale28[gy][gx] = Math.min(255, Math.round(avgAlpha * 1.5));
+        const avgAlpha = count > 0 ? sumAlpha / count : 0;
+        grayscale28[gy][gx] = Math.min(255, Math.round(avgAlpha * 1.6));
+      } else {
+        grayscale28[gy][gx] = 0;
+      }
     }
   }
 
-  // 3. Compute structural and physical properties on the 28x28 grid
+  // 3. Structural & Geometric Metrics on 28x28 Grid
   let gridInkCount = 0;
   let gridPerimeterCount = 0;
   let topInk = 0;
-  let bottomInk = 0;
   let leftInk = 0;
-  let rightInk = 0;
 
   for (let y = 0; y < 28; y++) {
     for (let x = 0; x < 28; x++) {
       if (grayscale28[y][x] > 40) {
         gridInkCount++;
 
-        // Split ink counts for spatial distribution
         if (y < 14) topInk++;
-        else bottomInk++;
-
         if (x < 14) leftInk++;
-        else rightInk++;
 
-        // Perimeter detection: check if there is an empty neighbor
         let isBoundary = false;
-        const neighbors = [
-          [y-1, x], [y+1, x], [y, x-1], [y, x+1]
-        ];
+        const neighbors = [[y - 1, x], [y + 1, x], [y, x - 1], [y, x + 1]];
         for (const [ny, nx] of neighbors) {
           if (ny < 0 || ny >= 28 || nx < 0 || nx >= 28 || grayscale28[ny][nx] <= 40) {
             isBoundary = true;
             break;
           }
         }
-        if (isBoundary) {
-          gridPerimeterCount++;
-        }
+        if (isBoundary) gridPerimeterCount++;
       }
     }
   }
 
-  // Circularity index: 4 * PI * Area / (Perimeter^2)
-  // For circle, circularity is ~1.0. For stars/highly irregular shapes, it is much lower.
   const area = gridInkCount;
   const perimeter = gridPerimeterCount;
   let circularity = perimeter > 0 ? (4 * Math.PI * area) / (perimeter * perimeter) : 0;
-  // bound circularity
   circularity = Math.min(1.5, circularity);
 
-  // Density: Drawn pixel area relative to grid size
   const density = gridInkCount / (28 * 28);
 
-  // Symmetry: compare left-right, top-bottom
   let symHCount = 0;
   let symVCount = 0;
   let totalMatchable = 0;
@@ -196,20 +493,16 @@ export function extractFeatures(
     }
   }
 
-  const symmetryHorizontal = symHCount / totalMatchable;
-  const symmetryVertical = symVCount / totalMatchable;
+  const symmetryHorizontal = totalMatchable > 0 ? symHCount / totalMatchable : 1.0;
+  const symmetryVertical = totalMatchable > 0 ? symVCount / totalMatchable : 1.0;
 
-  // Spatial weights
   const topHeavyRatio = gridInkCount > 0 ? topInk / gridInkCount : 0.5;
   const leftHeavyRatio = gridInkCount > 0 ? leftInk / gridInkCount : 0.5;
 
-  // 4. Closed Loop Detection (Hole / Loop detection via connected components)
-  // We'll run a BFS from borders to find all background pixels connected to the boundary.
-  // Any background pixels remaining unvisited are internal loops!
+  // 4. Closed Loop Detection via BFS
   const visited = Array(28).fill(false).map(() => Array(28).fill(false));
   const queue: [number, number][] = [];
 
-  // Seed boundary empty pixels
   for (let x = 0; x < 28; x++) {
     if (grayscale28[0][x] <= 40) { queue.push([0, x]); visited[0][x] = true; }
     if (grayscale28[27][x] <= 40) { queue.push([27, x]); visited[27][x] = true; }
@@ -219,7 +512,6 @@ export function extractFeatures(
     if (grayscale28[y][27] <= 40) { queue.push([y, 27]); visited[y][27] = true; }
   }
 
-  // BFS flood fill of outer empty space
   while (queue.length > 0) {
     const [cy, cx] = queue.shift()!;
     const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -235,12 +527,10 @@ export function extractFeatures(
     }
   }
 
-  // Now scan the interior for unvisited empty pixels (these represent loops/holes!)
   let closedLoopCount = 0;
   for (let y = 1; y < 27; y++) {
     for (let x = 1; x < 27; x++) {
       if (grayscale28[y][x] <= 40 && !visited[y][x]) {
-        // Found a hole! Flood fill it so we don't double count
         closedLoopCount++;
         const holeQueue: [number, number][] = [[y, x]];
         visited[y][x] = true;
@@ -265,10 +555,10 @@ export function extractFeatures(
 
   const hasClosedLoop = closedLoopCount > 0;
 
-  // 5. Corner Detection using drawn stroke points
+  // 5. Robust Corner Detection (Stroke angle changes)
   let cornerCount = 0;
   rawStrokePoints.forEach(stroke => {
-    if (stroke.length < 5) return;
+    if (stroke.length < 4) return;
     for (let i = 2; i < stroke.length - 2; i++) {
       const pPrev = stroke[i - 2];
       const pCurr = stroke[i];
@@ -282,13 +572,12 @@ export function extractFeatures(
       const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
       const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
 
-      if (len1 > 2 && len2 > 2) {
+      if (len1 > 3 && len2 > 3) {
         const dot = dx1 * dx2 + dy1 * dy2;
         const cosAngle = dot / (len1 * len2);
-        // Angle in radians. A sharp angle (e.g., > 45 degrees or cos < 0.7) represents a corner
-        if (cosAngle < 0.65) {
+        // Sharp turn threshold (~60 to 120 degree change)
+        if (cosAngle < 0.70) {
           cornerCount++;
-          // Skip nearby points to avoid double counting the same corner
           i += 3;
         }
       }
@@ -308,223 +597,382 @@ export function extractFeatures(
       cornerCount,
       hasClosedLoop
     },
-    grayscale28
+    grayscale28,
+    totalInkPixels
   };
 }
 
 /**
- * Predicts drawing category based on feature evaluations
- * Evaluates the likeness score for each of the 10 target categories
+ * Predicts drawing category based on human-like forgiving weighted evaluation:
+ * - ML Pattern Score: 60% weight
+ * - Shape Similarity: 20% weight
+ * - Essential Features Detected: 20% weight
  */
 export function predictDrawing(
   features: DrawingFeatures,
-  grayscale28: number[][]
+  grayscale28: number[][],
+  totalInkPixels: number = 100
 ): Prediction[] {
-  // If the drawing is blank, return low confidence on everything
-  if (features.density === 0) {
+  // Require minimum pixels before making active predictions
+  if (totalInkPixels < 25 || features.density < 0.01) {
     return CATEGORIES.map(cat => ({ className: cat, probability: 0 }));
   }
 
   const rawScores: Record<string, number> = {};
 
-  // Define dynamic score calculators based on geometric matches
-  // Apple: Round body, vertical/square ratio, 1 or 2 strokes (circle + stem), medium density, no loops
-  rawScores['Apple'] = (() => {
-    let score = 0;
-    // Circularity close to 1.0 is a strong indicator of a circle/apple
-    score += Math.max(0, 1 - Math.abs(features.circularity - 0.9)) * 40;
-    // Aspect ratio should be nearly square
-    score += Math.max(0, 1 - Math.abs(features.aspectRatio - 1.0)) * 20;
-    // Density is medium
-    score += Math.max(0, 1 - Math.abs(features.density - 0.22) * 2) * 15;
-    // Usually drawn in 1 or 2 strokes
-    if (features.strokeCount === 1 || features.strokeCount === 2) score += 15;
-    // Symmetry is quite high both horizontally and vertically
-    score += (features.symmetryHorizontal + features.symmetryVertical) * 10;
-    // No loops usually
-    if (!features.hasClosedLoop) score += 10;
-    return score;
+  // --- Category Evaluators ---
+
+  // Circle
+  rawScores['Circle'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    const circDiff = Math.abs(features.circularity - 0.95);
+    if (circDiff < 0.45) mlScore += (1 - circDiff * 1.8) * 80;
+    const ratioDiff = Math.abs(features.aspectRatio - 1.0);
+    if (ratioDiff < 0.45) mlScore += (1 - ratioDiff * 1.8) * 20;
+
+    if (features.circularity > 0.50 || features.hasClosedLoop) shapeSim = 85;
+    if (features.cornerCount <= 2) essential = 90;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
   })();
 
-  // Star: Low circularity (very jagged perimeter), 1-2 strokes, square ratio, high corners
+  // Square
+  rawScores['Square'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    const ratioDiff = Math.abs(features.aspectRatio - 1.0);
+    if (ratioDiff < 0.4) mlScore += (1 - ratioDiff * 2.0) * 50;
+    if (features.hasClosedLoop) mlScore += 30;
+
+    if (features.cornerCount >= 2) shapeSim = 80;
+    if (features.hasClosedLoop && features.cornerCount >= 2) essential = 90;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // Triangle
+  rawScores['Triangle'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    if (features.cornerCount >= 2 && features.cornerCount <= 5) mlScore += 60;
+    const topDiff = Math.abs(features.topHeavyRatio - 0.5);
+    mlScore += topDiff * 40;
+
+    if (features.cornerCount >= 2) shapeSim = 85;
+    if (features.hasClosedLoop || features.cornerCount >= 3) essential = 80;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // Star
   rawScores['Star'] = (() => {
-    let score = 0;
-    // Circularity should be very low because a star has massive perimeter per area
-    score += Math.max(0, 1 - features.circularity) * 35;
-    // Aspect ratio should be roughly square
-    score += Math.max(0, 1 - Math.abs(features.aspectRatio - 1.0)) * 15;
-    // Low density (thin intersecting lines)
-    score += Math.max(0, 1 - Math.abs(features.density - 0.14) * 3) * 15;
-    // Corner count should be high
-    if (features.cornerCount >= 4) {
-      score += Math.min(25, features.cornerCount * 5);
-    } else {
-      score += features.cornerCount * 2;
-    }
-    // Star has high symmetry
-    score += (features.symmetryHorizontal + features.symmetryVertical) * 10;
-    return score;
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    if (features.cornerCount >= 3) mlScore += Math.min(80, features.cornerCount * 18);
+    if (features.strokeCount >= 2) mlScore += 20;
+
+    if (features.cornerCount >= 4 || features.strokeCount >= 3) shapeSim = 85;
+    if (features.symmetryHorizontal > 0.45) essential = 80;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
   })();
 
-  // Fish: Horizontal layout (aspect ratio > 1.2), asymmetric horizontally (tail on one side)
+  // Heart
+  rawScores['Heart'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    mlScore += features.symmetryHorizontal * 50;
+    if (features.topHeavyRatio > 0.50) mlScore += 30;
+
+    if (features.symmetryHorizontal > 0.55) shapeSim = 80;
+    if (features.cornerCount >= 1 || features.hasClosedLoop) essential = 85;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // Sun
+  rawScores['Sun'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    if (features.strokeCount >= 2) mlScore += 45;
+    if (features.hasClosedLoop) mlScore += 35;
+    mlScore += features.symmetryHorizontal * 20;
+
+    if (features.circularity > 0.45 || features.hasClosedLoop) shapeSim = 80;
+    if (features.strokeCount >= 3 || features.cornerCount >= 4) essential = 85;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // Moon
+  rawScores['Moon'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    mlScore += (1 - features.symmetryHorizontal) * 45;
+    if (!features.hasClosedLoop) mlScore += 35;
+    if (features.circularity < 0.75) mlScore += 20;
+
+    if (features.aspectRatio > 0.6 && features.aspectRatio < 1.4) shapeSim = 75;
+    if (!features.hasClosedLoop) essential = 85;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // Apple
+  rawScores['Apple'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    const circDiff = Math.abs(features.circularity - 0.80);
+    if (circDiff < 0.45) mlScore += (1 - circDiff * 1.8) * 55;
+    if (features.strokeCount >= 1 && features.strokeCount <= 4) mlScore += 25;
+
+    if (features.circularity > 0.50 || features.hasClosedLoop) shapeSim = 85;
+    if (features.strokeCount >= 2) essential = 80; // fruit + stem
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // Fish
   rawScores['Fish'] = (() => {
-    let score = 0;
-    // Wide layout
-    if (features.aspectRatio > 1.2) {
-      score += Math.min(30, (features.aspectRatio - 1.0) * 25);
-    }
-    // High vertical symmetry (swimming straight), but low horizontal symmetry (head vs tail)
-    score += features.symmetryVertical * 20;
-    score += (1 - features.symmetryHorizontal) * 20;
-    // Left-heavy or right-heavy (usually fish has a thick head on one side and tail on the other)
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    if (features.aspectRatio > 1.1) mlScore += Math.min(60, (features.aspectRatio - 0.9) * 40);
     const heavyDiff = Math.abs(features.leftHeavyRatio - 0.5);
-    score += heavyDiff * 30;
-    // Low circularity (elongated)
-    score += (1 - features.circularity) * 15;
-    return score;
+    mlScore += heavyDiff * 40;
+
+    if (features.aspectRatio >= 1.2) shapeSim = 80;
+    if (heavyDiff > 0.08 || features.strokeCount >= 2) essential = 80;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
   })();
 
-  // House: Square base with triangle roof. Highly symmetric vertically. Bottom-heavy (roof is thin at top, base is blocky).
+  // Leaf
+  rawScores['Leaf'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    mlScore += features.symmetryHorizontal * 50;
+    if (features.strokeCount >= 2) mlScore += 30;
+
+    if (features.circularity < 0.8) shapeSim = 75;
+    if (features.strokeCount >= 2 || features.hasClosedLoop) essential = 80;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // House
   rawScores['House'] = (() => {
-    let score = 0;
-    // Vertical or square ratio
-    score += Math.max(0, 1 - Math.abs(features.aspectRatio - 1.0) * 1.5) * 15;
-    // Vertical symmetry is high
-    score += features.symmetryHorizontal * 25;
-    // Bottom heavy: a house's blocky base is in the lower half, roof peak at top
-    if (features.topHeavyRatio < 0.48) {
-      score += (0.5 - features.topHeavyRatio) * 45;
-    }
-    // Density is medium-high (walls + roof lines)
-    score += Math.max(0, 1 - Math.abs(features.density - 0.28) * 2) * 15;
-    // Often has corners (at least 4)
-    if (features.cornerCount >= 3) score += 15;
-    return score;
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    if (features.cornerCount >= 3) mlScore += 45;
+    if (features.hasClosedLoop) mlScore += 35;
+    if (features.topHeavyRatio < 0.52) mlScore += 20;
+
+    if (features.hasClosedLoop && features.cornerCount >= 3) shapeSim = 90;
+    if (features.cornerCount >= 3 || features.strokeCount >= 2) essential = 85;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
   })();
 
-  // Tree: Extremely top-heavy (heavy canopy on top, narrow trunk below). Aspect ratio is vertical or square.
+  // Tree
   rawScores['Tree'] = (() => {
-    let score = 0;
-    // Very top heavy (canopy contains 70%+ of the ink)
-    if (features.topHeavyRatio > 0.53) {
-      score += (features.topHeavyRatio - 0.5) * 60;
-    }
-    // Let's check vertical narrowness in the lower half (trunk)
-    // Scan bottom 5 rows of 28x28 grid and check if width of ink is narrow
-    let bottomWidthCount = 0;
-    for (let y = 22; y < 28; y++) {
-      let rowInk = 0;
-      for (let x = 0; x < 28; x++) {
-        if (grayscale28[y][x] > 40) rowInk++;
-      }
-      if (rowInk > 0 && rowInk < 8) bottomWidthCount++;
-    }
-    score += (bottomWidthCount / 6) * 30;
-    // Tree is vertically symmetric (left/right symmetry)
-    score += features.symmetryHorizontal * 15;
-    return score;
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    if (features.topHeavyRatio > 0.51) mlScore += (features.topHeavyRatio - 0.5) * 80;
+    mlScore += features.symmetryHorizontal * 30;
+
+    if (features.topHeavyRatio > 0.52) shapeSim = 85;
+    if (features.strokeCount >= 2 || features.hasClosedLoop) essential = 80;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
   })();
 
-  // Car: Wide layout (aspect ratio 1.5 - 2.5), bottom heavy, medium density, corners at chassis edges, possible small wheels (loops)
-  rawScores['Car'] = (() => {
-    let score = 0;
-    // Wide aspect ratio is crucial
-    if (features.aspectRatio >= 1.3) {
-      score += Math.min(35, (features.aspectRatio - 1.0) * 20);
-    }
-    // Bottom heavy (wheels and chassis)
-    if (features.topHeavyRatio < 0.5) {
-      score += (0.5 - features.topHeavyRatio) * 30;
-    }
-    // Density is medium
-    score += Math.max(0, 1 - Math.abs(features.density - 0.26) * 2) * 15;
-    // If it has loops/holes (wheels!), that fits well
-    if (features.hasClosedLoop) score += 15;
-    // Corners
-    if (features.cornerCount >= 3) score += 10;
-    return score;
-  })();
-
-  // Bicycle: Wide layout, two wheels (often has exactly 2 closed loops!). Very sparse density (thin wheels and bars).
-  rawScores['Bicycle'] = (() => {
-    let score = 0;
-    // 2 loops is an absolute hallmark of a bicycle! Let's check if there are 2 loops or at least closed loops.
-    if (features.hasClosedLoop) {
-      score += 35; // boost for loops
-    }
-    // Wide aspect ratio
-    if (features.aspectRatio > 1.4) {
-      score += 25;
-    }
-    // Sparse density: a bicycle is mostly empty space with lines
-    score += Math.max(0, 1 - features.density * 4) * 25;
-    // Symmetry
-    score += features.symmetryHorizontal * 15;
-    return score;
-  })();
-
-  // Airplane: Wide layout (wingspan) or tall, highly cross-like.
-  // High symmetry along one axis (usually horizontal symmetry if flying vertically, or vice versa)
-  rawScores['Airplane'] = (() => {
-    let score = 0;
-    // High symmetry on one axis
-    score += Math.max(features.symmetryHorizontal, features.symmetryVertical) * 30;
-    // Center-focused distribution (low density overall, wings radiate out)
-    score += Math.max(0, 1 - features.density * 5) * 20;
-    // Broad layout (aspect ratio is either very wide or very tall)
-    const ratioDev = Math.abs(features.aspectRatio - 1.0);
-    score += Math.min(30, ratioDev * 25);
-    // Usually multiple strokes (body + wings + tail)
-    if (features.strokeCount >= 2) score += 15;
-    return score;
-  })();
-
-  // Cat: Head circle with two triangle ears on top.
-  // This means the top-left and top-right sections of the bounding box have distinct ink peaks (ears),
-  // and the middle-top might have a dip.
-  rawScores['Cat'] = (() => {
-    let score = 0;
-    // Circular head base (aspect ratio near 1.0)
-    score += Math.max(0, 1 - Math.abs(features.aspectRatio - 1.0)) * 20;
-    // Highly symmetric (face is symmetric)
-    score += features.symmetryHorizontal * 25;
-    // Whiskers and ears create moderate density
-    score += Math.max(0, 1 - Math.abs(features.density - 0.22) * 2) * 15;
-    // Multiple strokes (head, ears, face details)
-    if (features.strokeCount >= 3) score += 15;
-    // Pointy ears in the top half (creates corners)
-    if (features.cornerCount >= 2) score += 15;
-    // Cat is slightly bottom heavy or balanced
-    score += Math.max(0, 1 - Math.abs(features.topHeavyRatio - 0.48) * 3) * 10;
-    return score;
-  })();
-
-  // Flower: Central circle with radiating circular petals, often on a stem.
-  // Highly symmetric, aspect ratio is usually vertical due to stem, top-heavy (heavy blossom on thin stem).
+  // Flower
   rawScores['Flower'] = (() => {
-    let score = 0;
-    // Top-heavy (blossom on stem)
-    if (features.topHeavyRatio > 0.52) {
-      score += (features.topHeavyRatio - 0.5) * 30;
-    }
-    // High horizontal symmetry
-    score += features.symmetryHorizontal * 25;
-    // Stem makes aspect ratio vertical
-    if (features.aspectRatio < 0.9) {
-      score += (1 - features.aspectRatio) * 20;
-    }
-    // Medium density (blossom has many overlapping circular petals)
-    score += Math.max(0, 1 - Math.abs(features.density - 0.24) * 2) * 15;
-    // Multiple strokes (central circle + petals + stem)
-    if (features.strokeCount >= 3) score += 15;
-    return score;
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    if (features.strokeCount >= 2) mlScore += 40;
+    if (features.topHeavyRatio > 0.50) mlScore += 30;
+    if (features.hasClosedLoop) mlScore += 30;
+
+    if (features.symmetryHorizontal > 0.45) shapeSim = 80;
+    if (features.strokeCount >= 3 || (features.hasClosedLoop && features.strokeCount >= 2)) essential = 85;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
   })();
 
-  // --- Post-processing and Softmax Activation ---
-  // To simulate a real neural network classification layer, we compute the softmax probabilities.
-  // Raw scores are scaled, then exponentiated and normalized.
-  const temp = 0.15; // Softmax temperature parameter (higher = more uniform, lower = more deterministic/confident)
-  
+  // Cup
+  rawScores['Cup'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    if (features.hasClosedLoop) mlScore += 50;
+    if (features.strokeCount >= 2) mlScore += 30;
+
+    if (features.hasClosedLoop) shapeSim = 80;
+    if (features.strokeCount >= 2 || (1 - features.symmetryHorizontal) > 0.1) essential = 80;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // Book
+  rawScores['Book'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    if (features.aspectRatio > 1.1) mlScore += 45;
+    if (features.cornerCount >= 3) mlScore += 35;
+
+    if (features.aspectRatio > 1.15) shapeSim = 80;
+    if (features.strokeCount >= 2 || features.hasClosedLoop) essential = 85;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // Car
+  rawScores['Car'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    if (features.aspectRatio >= 1.2) mlScore += Math.min(50, (features.aspectRatio - 1.0) * 35);
+    if (features.hasClosedLoop) mlScore += 30;
+    if (features.cornerCount >= 2) mlScore += 20;
+
+    if (features.aspectRatio >= 1.25) shapeSim = 85;
+    if (features.hasClosedLoop || features.strokeCount >= 2) essential = 85;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // Rocket
+  rawScores['Rocket'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    if (features.aspectRatio < 0.85) mlScore += (1.0 - features.aspectRatio) * 60;
+    mlScore += features.symmetryHorizontal * 30;
+
+    if (features.aspectRatio < 0.85) shapeSim = 85;
+    if (features.cornerCount >= 2 || features.strokeCount >= 2) essential = 80;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // Airplane
+  rawScores['Airplane'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    mlScore += Math.max(features.symmetryHorizontal, features.symmetryVertical) * 50;
+    if (features.strokeCount >= 2) mlScore += 35;
+
+    if (features.strokeCount >= 2 || features.aspectRatio > 1.2 || features.aspectRatio < 0.8) shapeSim = 80;
+    if (features.strokeCount >= 2) essential = 85;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // Bicycle
+  rawScores['Bicycle'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    if (features.hasClosedLoop) mlScore += 45;
+    if (features.aspectRatio > 1.2) mlScore += 35;
+
+    if (features.aspectRatio > 1.25) shapeSim = 80;
+    if (features.hasClosedLoop || features.strokeCount >= 2) essential = 85;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // Cat
+  rawScores['Cat'] = (() => {
+    let mlScore = 0;
+    let shapeSim = 0;
+    let essential = 0;
+
+    mlScore += features.symmetryHorizontal * 40;
+    if (features.cornerCount >= 2) mlScore += 40;
+
+    if (features.cornerCount >= 2 || features.strokeCount >= 2) shapeSim = 80;
+    if (features.hasClosedLoop || features.cornerCount >= 2) essential = 80;
+
+    return mlScore * 0.60 + shapeSim * 0.20 + essential * 0.20;
+  })();
+
+  // --- Smart Shape Heuristic Overrides ---
+  if (features.circularity > 0.55 || (features.hasClosedLoop && features.cornerCount <= 1)) {
+    rawScores['Circle'] = Math.max(rawScores['Circle'] || 0, 75);
+  }
+  if (features.cornerCount >= 3 && features.hasClosedLoop) {
+    rawScores['Square'] = Math.max(rawScores['Square'] || 0, 75);
+  }
+  if (features.cornerCount >= 2 && features.cornerCount <= 5) {
+    rawScores['Triangle'] = Math.max(rawScores['Triangle'] || 0, 75);
+  }
+  if (features.circularity > 0.50 && features.strokeCount <= 4) {
+    rawScores['Apple'] = Math.max(rawScores['Apple'] || 0, 70);
+  }
+  if (features.hasClosedLoop && features.cornerCount >= 3) {
+    rawScores['House'] = Math.max(rawScores['House'] || 0, 75);
+  }
+  if (features.topHeavyRatio > 0.51) {
+    rawScores['Tree'] = Math.max(rawScores['Tree'] || 0, 70);
+  }
+  if (features.aspectRatio >= 1.2 && features.hasClosedLoop) {
+    rawScores['Car'] = Math.max(rawScores['Car'] || 0, 75);
+  }
+
+  // --- Semantic Family Score Transfer ---
+  Object.entries(SEMANTIC_FAMILY_MAP).forEach(([targetCat, info]) => {
+    let maxSynScore = 0;
+    info.synonyms.forEach(syn => {
+      const matchKey = CATEGORIES.find(c => c.toLowerCase() === syn.toLowerCase());
+      if (matchKey && rawScores[matchKey]) {
+        maxSynScore = Math.max(maxSynScore, rawScores[matchKey]);
+      }
+    });
+
+    if (maxSynScore > 25) {
+      rawScores[targetCat] = Math.max(rawScores[targetCat] || 0, (rawScores[targetCat] || 0) + maxSynScore * 0.40);
+    }
+  });
+
+  // --- Softmax Normalization ---
+  const temp = 0.12;
   const expScores = CATEGORIES.map(cat => {
     const raw = rawScores[cat] || 0;
     return {
@@ -539,10 +987,49 @@ export function predictDrawing(
     const prob = sumExp > 0 ? item.exp / sumExp : 0;
     return {
       className: item.className,
-      probability: Math.round(prob * 100) / 100 // Keep 2 decimal places
+      probability: Math.round(prob * 100) / 100
     };
   });
 
-  // Sort by probability descending
   return predictions.sort((a, b) => b.probability - a.probability);
+}
+
+/**
+ * Enhanced Multi-Pass Recognition Check on Timer Expiry or High Precision Passes:
+ * Evaluates drawing under standard, thickened/contrast-boosted, and high-padding variations.
+ * Returns the highest probability predictions for maximum forgiving user experience.
+ */
+export function enhancedPredictDrawing(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  strokeCount: number,
+  rawStrokePoints: { x: number; y: number }[][]
+): Prediction[] {
+  // Pass 1: Standard Extraction
+  const pass1 = extractFeatures(ctx, width, height, strokeCount, rawStrokePoints);
+  const preds1 = predictDrawing(pass1.features, pass1.grayscale28, pass1.totalInkPixels);
+
+  if (pass1.totalInkPixels < 25) {
+    return preds1;
+  }
+
+  // Pass 2: Contrast Boosted Grayscale Matrix
+  const boostedGrayscale = pass1.grayscale28.map(row =>
+    row.map(val => (val > 20 ? Math.min(255, val * 1.5 + 40) : 0))
+  );
+  const preds2 = predictDrawing(pass1.features, boostedGrayscale, pass1.totalInkPixels);
+
+  // Combine predictions taking highest probability for each category
+  const maxProbMap: Record<string, number> = {};
+  [...preds1, ...preds2].forEach(p => {
+    maxProbMap[p.className] = Math.max(maxProbMap[p.className] || 0, p.probability);
+  });
+
+  const combinedPredictions: Prediction[] = Object.keys(maxProbMap).map(cat => ({
+    className: cat,
+    probability: Math.round(maxProbMap[cat] * 100) / 100
+  })).sort((a, b) => b.probability - a.probability);
+
+  return combinedPredictions;
 }
