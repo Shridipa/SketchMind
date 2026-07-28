@@ -1,8 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Bug, X, CheckCircle, AlertCircle, Cpu, Activity, ShieldCheck, Layers } from 'lucide-react';
+import { Bug, X, CheckCircle, AlertCircle, ShieldCheck, Layers, Lock, Unlock, Eye } from 'lucide-react';
 import { DrawingFeatures, Prediction } from '../types';
-import { evaluateDecisionEngine, RecognitionDecision } from '../utils/mlEngine';
+import { evaluateDecisionEngine, RecognitionDecision, OBJECT_PROFILES } from '../utils/mlEngine';
 
 interface DebugPanelProps {
   isOpen: boolean;
@@ -59,6 +59,9 @@ export default function DebugPanel({
     : {
         targetWord,
         categoryType: 'simple',
+        recognitionState: 'EMPTY_CANVAS',
+        stateMessage: 'Start drawing...',
+        isLocked: true,
         geometryScore: 0,
         featureScore: 0,
         shapeSimilarity: 0,
@@ -66,12 +69,17 @@ export default function DebugPanel({
         strokeQuality: 0,
         structuralPassed: false,
         missingFeatures: ['Awaiting drawing...'],
+        totalStrokeLength: 0,
+        boxWidth: 0,
+        boxHeight: 0,
         finalScore: 0,
         targetThreshold,
         isSuccess: false,
         essentialMatched: false,
         primaryReason: 'Awaiting drawing...'
       };
+
+  const profile = OBJECT_PROFILES[targetWord] || OBJECT_PROFILES['Cup'];
 
   return (
     <motion.div
@@ -94,19 +102,82 @@ export default function DebugPanel({
         </button>
       </div>
 
-      <div className="p-4 space-y-4 max-h-[80vh] overflow-y-auto">
+      <div className="p-4 space-y-3.5 max-h-[80vh] overflow-y-auto">
+        {/* Stage 1: Recognition State Machine */}
+        <div className={`rounded-xl p-3 border space-y-2 ${
+          decision.isLocked
+            ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+            : decision.isSuccess
+            ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+            : 'bg-cyan-950/40 border-cyan-500/40 text-cyan-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5">
+              <Eye className="w-3.5 h-3.5 text-cyan-400" />
+              State Machine Status
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                decision.isLocked
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+              }`}>
+                {decision.recognitionState}
+              </span>
+              {decision.isLocked ? (
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+              ) : (
+                <Unlock className="w-3.5 h-3.5 text-emerald-400" />
+              )}
+            </div>
+          </div>
+
+          <div className="text-[11px] font-medium bg-slate-950/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
+            <span className="text-slate-400">Message:</span>
+            <span className="text-slate-200 font-bold">{decision.stateMessage}</span>
+          </div>
+
+          {/* Drawing Metrics */}
+          <div className="grid grid-cols-2 gap-2 text-[10px] pt-1">
+            <div className="bg-slate-950/50 p-1.5 rounded border border-slate-800/80 flex justify-between">
+              <span className="text-slate-400">Stroke Length:</span>
+              <span className={`font-bold ${decision.totalStrokeLength >= profile.minimumStrokeLength ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {decision.totalStrokeLength} / {profile.minimumStrokeLength}px
+              </span>
+            </div>
+            <div className="bg-slate-950/50 p-1.5 rounded border border-slate-800/80 flex justify-between">
+              <span className="text-slate-400">Box Dimensions:</span>
+              <span className={`font-bold ${decision.boxWidth >= profile.minimumBoxWidth && decision.boxHeight >= profile.minimumBoxHeight ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {decision.boxWidth}×{decision.boxHeight}px
+              </span>
+            </div>
+            <div className="bg-slate-950/50 p-1.5 rounded border border-slate-800/80 flex justify-between">
+              <span className="text-slate-400">Ink Pixels:</span>
+              <span className={`font-bold ${totalInkPixels >= profile.minimumInkPixels ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {totalInkPixels} / {profile.minimumInkPixels}px
+              </span>
+            </div>
+            <div className="bg-slate-950/50 p-1.5 rounded border border-slate-800/80 flex justify-between">
+              <span className="text-slate-400">Straight Line:</span>
+              <span className={`font-bold ${features?.isStraightLine ? 'text-rose-400' : 'text-emerald-400'}`}>
+                {features?.isStraightLine ? 'YES (REJECTED)' : 'NO'}
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Tensor Preview */}
         <div className="bg-slate-950/80 rounded-xl p-3 border border-slate-800 flex gap-4 items-center">
           <div>
             <span className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">
-              Cropped & Centered Tensor (28×28)
+              Centered Grid (28×28)
             </span>
             <div className="relative border border-slate-700 rounded p-1 bg-white inline-block">
               <canvas
                 ref={canvasRef}
                 width={28}
                 height={28}
-                className="w-20 h-20 image-rendering-pixelated"
+                className="w-16 h-16 image-rendering-pixelated"
               />
             </div>
           </div>
@@ -122,8 +193,8 @@ export default function DebugPanel({
               </div>
             </div>
             <div className="flex justify-between border-b border-slate-800/80 pb-1">
-              <span className="text-slate-400">Total Ink Pixels:</span>
-              <span className="font-bold text-emerald-400">{totalInkPixels}</span>
+              <span className="text-slate-400">TensorFlow Conf:</span>
+              <span className="font-bold text-blue-400">{tfConfidence}%</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Target Threshold:</span>
@@ -132,7 +203,7 @@ export default function DebugPanel({
           </div>
         </div>
 
-        {/* Structural Validation Box */}
+        {/* Stage 2: Structural Validation Gatekeeper */}
         <div className={`rounded-xl p-3 border space-y-1.5 ${
           decision.structuralPassed
             ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
@@ -141,7 +212,7 @@ export default function DebugPanel({
           <div className="flex items-center justify-between">
             <span className="text-[10px] uppercase font-bold tracking-wider flex items-center gap-1">
               <ShieldCheck className={`w-3.5 h-3.5 ${decision.structuralPassed ? 'text-emerald-400' : 'text-rose-400'}`} />
-              Stage 2: Structural Validation
+              Stage 2: Structural Gatekeeper
             </span>
             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
               decision.structuralPassed ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
@@ -152,7 +223,7 @@ export default function DebugPanel({
 
           {!decision.structuralPassed && decision.missingFeatures.length > 0 && (
             <div className="mt-1 pt-1 border-t border-rose-800/50 space-y-0.5">
-              <span className="text-[10px] text-rose-300 font-semibold block">Missing Essential Features:</span>
+              <span className="text-[10px] text-rose-300 font-semibold block">Missing Required Features:</span>
               <ul className="list-disc list-inside text-[10px] text-rose-200/90 pl-1 space-y-0.5">
                 {decision.missingFeatures.map((feat, i) => (
                   <li key={i}>{feat}</li>
@@ -173,17 +244,17 @@ export default function DebugPanel({
 
           <div className="space-y-1.5 text-[11px]">
             <div className="flex justify-between items-center">
-              <span className="text-slate-300">Geometry Score</span>
+              <span className="text-slate-300">TensorFlow Confidence</span>
               <div className="flex gap-2 items-center">
-                <span className="text-[10px] text-slate-500">25%</span>
-                <span className="font-bold text-emerald-400">{decision.geometryScore}%</span>
+                <span className="text-[10px] text-slate-500">35%</span>
+                <span className="font-bold text-blue-400">{decision.mlConfidence}%</span>
               </div>
             </div>
 
             <div className="flex justify-between items-center">
-              <span className="text-slate-300">Feature Detection</span>
+              <span className="text-slate-300">Structural Feature Check</span>
               <div className="flex gap-2 items-center">
-                <span className="text-[10px] text-slate-500">10%</span>
+                <span className="text-[10px] text-slate-500">30%</span>
                 <span className="font-bold text-cyan-400">{decision.featureScore}%</span>
               </div>
             </div>
@@ -197,10 +268,10 @@ export default function DebugPanel({
             </div>
 
             <div className="flex justify-between items-center">
-              <span className="text-slate-300">TensorFlow Confidence</span>
+              <span className="text-slate-300">Geometry Score</span>
               <div className="flex gap-2 items-center">
-                <span className="text-[10px] text-slate-500">40%</span>
-                <span className="font-bold text-blue-400">{decision.mlConfidence}%</span>
+                <span className="text-[10px] text-slate-500">10%</span>
+                <span className="font-bold text-emerald-400">{decision.geometryScore}%</span>
               </div>
             </div>
 
@@ -214,7 +285,9 @@ export default function DebugPanel({
 
             <div className="flex justify-between items-center pt-1 border-t border-slate-800 font-bold">
               <span className="text-white">Final Decision Score</span>
-              <span className="text-emerald-300">{decision.finalScore}%</span>
+              <span className={decision.isSuccess ? 'text-emerald-400' : 'text-amber-400'}>
+                {decision.finalScore}%
+              </span>
             </div>
           </div>
         </div>

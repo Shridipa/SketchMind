@@ -2,6 +2,14 @@ export type GameState = 'landing' | 'tutorial' | 'playing' | 'completed-sketch' 
 
 export type DrawingTool = 'pencil' | 'eraser';
 
+export type RecognitionState =
+  | 'EMPTY_CANVAS'
+  | 'DRAWING_STARTED'
+  | 'INSUFFICIENT_INFORMATION'
+  | 'READY_FOR_RECOGNITION'
+  | 'VALIDATING_OBJECT'
+  | 'RECOGNIZED';
+
 export interface Prediction {
   className: string;
   probability: number;
@@ -76,4 +84,8 @@ export interface DrawingFeatures {
   strokeCount: number;
   cornerCount: number;
   hasClosedLoop: boolean;
+  totalStrokeLength: number;
+  boxWidth: number;
+  boxHeight: number;
+  isStraightLine: boolean;
 }

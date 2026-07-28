@@ -1,4 +1,4 @@
-import { DrawingFeatures, Prediction, Challenge } from '../types';
+import { DrawingFeatures, Prediction, Challenge, RecognitionState } from '../types';
 
 export function getTargetThreshold(difficulty?: string): number {
   switch (difficulty) {
@@ -333,6 +333,9 @@ export const CHALLENGES_20: Challenge[] = [
 export interface RecognitionDecision {
   targetWord: string;
   categoryType: 'geometry' | 'simple' | 'complex';
+  recognitionState: RecognitionState;
+  stateMessage: string;
+  isLocked: boolean;
   geometryScore: number;     // 0 - 100
   featureScore: number;      // 0 - 100
   shapeSimilarity: number;   // 0 - 100
@@ -340,6 +343,9 @@ export interface RecognitionDecision {
   strokeQuality: number;     // 0 - 100
   structuralPassed: boolean;
   missingFeatures: string[];
+  totalStrokeLength: number;
+  boxWidth: number;
+  boxHeight: number;
   finalScore: number;        // 0 - 100
   targetThreshold: number;
   isSuccess: boolean;
@@ -378,7 +384,10 @@ export interface ObjectProfile {
   requiredFeatures: string[];
   optionalFeatures: string[];
   minimumInkPixels: number;
-  minimumStrokeCount?: number;
+  minimumStrokeLength: number;
+  minimumBoxWidth: number;
+  minimumBoxHeight: number;
+  minimumStrokeCount: number;
   minimumSimilarity: number;
   minimumMlConfidence: number;
   categoryType: CategoryType;
@@ -386,42 +395,62 @@ export interface ObjectProfile {
 
 export const OBJECT_PROFILES: Record<string, ObjectProfile> = {
   'Circle': {
-    requiredFeatures: ['Closed rounded loop'],
-    optionalFeatures: ['Single stroke'],
+    requiredFeatures: ['Closed contour loop', 'Circularity >= 0.50', 'Aspect ratio 0.75-1.35', 'Corner count <= 5'],
+    optionalFeatures: ['Single smooth stroke'],
     minimumInkPixels: 20,
-    minimumSimilarity: 0.50,
+    minimumStrokeLength: 120,
+    minimumBoxWidth: 65,
+    minimumBoxHeight: 65,
+    minimumStrokeCount: 1,
+    minimumSimilarity: 0.75,
     minimumMlConfidence: 40,
     categoryType: 'geometry'
   },
   'Square': {
-    requiredFeatures: ['Quadrilateral corners or box outline'],
+    requiredFeatures: ['3-5 dominant corners or box outline', 'Aspect ratio 0.75-1.30'],
     optionalFeatures: ['Parallel sides'],
     minimumInkPixels: 22,
-    minimumSimilarity: 0.50,
+    minimumStrokeLength: 130,
+    minimumBoxWidth: 65,
+    minimumBoxHeight: 65,
+    minimumStrokeCount: 1,
+    minimumSimilarity: 0.70,
     minimumMlConfidence: 40,
     categoryType: 'geometry'
   },
   'Triangle': {
-    requiredFeatures: ['3 connected sides & apex peak'],
+    requiredFeatures: ['2-4 dominant corners & apex peak', '3 connected sides or closed contour'],
     optionalFeatures: ['Sharp corners'],
     minimumInkPixels: 20,
-    minimumSimilarity: 0.50,
+    minimumStrokeLength: 120,
+    minimumBoxWidth: 60,
+    minimumBoxHeight: 60,
+    minimumStrokeCount: 1,
+    minimumSimilarity: 0.70,
     minimumMlConfidence: 40,
     categoryType: 'geometry'
   },
   'Star': {
-    requiredFeatures: ['Radiating 5-point tips or crossing strokes'],
+    requiredFeatures: ['5 radiating points or crossing star strokes', 'At least 3 corners'],
     optionalFeatures: ['Symmetric points'],
     minimumInkPixels: 22,
-    minimumSimilarity: 0.50,
+    minimumStrokeLength: 140,
+    minimumBoxWidth: 65,
+    minimumBoxHeight: 65,
+    minimumStrokeCount: 1,
+    minimumSimilarity: 0.65,
     minimumMlConfidence: 40,
     categoryType: 'geometry'
   },
   'Heart': {
-    requiredFeatures: ['Symmetric top arches & bottom V apex'],
+    requiredFeatures: ['Symmetric top lobes & bottom V apex', 'Horizontal symmetry > 42%'],
     optionalFeatures: ['Closed loop'],
     minimumInkPixels: 22,
-    minimumSimilarity: 0.50,
+    minimumStrokeLength: 130,
+    minimumBoxWidth: 65,
+    minimumBoxHeight: 65,
+    minimumStrokeCount: 1,
+    minimumSimilarity: 0.70,
     minimumMlConfidence: 40,
     categoryType: 'geometry'
   },
@@ -429,7 +458,11 @@ export const OBJECT_PROFILES: Record<string, ObjectProfile> = {
     requiredFeatures: ['Central core circle', 'Radiating beam rays'],
     optionalFeatures: ['Smile face'],
     minimumInkPixels: 25,
-    minimumSimilarity: 0.55,
+    minimumStrokeLength: 180,
+    minimumBoxWidth: 80,
+    minimumBoxHeight: 80,
+    minimumStrokeCount: 2,
+    minimumSimilarity: 0.60,
     minimumMlConfidence: 45,
     categoryType: 'simple'
   },
@@ -437,7 +470,11 @@ export const OBJECT_PROFILES: Record<string, ObjectProfile> = {
     requiredFeatures: ['Crescent C-curve outline'],
     optionalFeatures: ['Crater dots'],
     minimumInkPixels: 20,
-    minimumSimilarity: 0.50,
+    minimumStrokeLength: 120,
+    minimumBoxWidth: 60,
+    minimumBoxHeight: 60,
+    minimumStrokeCount: 1,
+    minimumSimilarity: 0.65,
     minimumMlConfidence: 40,
     categoryType: 'simple'
   },
@@ -445,23 +482,35 @@ export const OBJECT_PROFILES: Record<string, ObjectProfile> = {
     requiredFeatures: ['Rounded fruit body', 'Top stem or indent'],
     optionalFeatures: ['Leaf on stem'],
     minimumInkPixels: 25,
-    minimumSimilarity: 0.55,
+    minimumStrokeLength: 150,
+    minimumBoxWidth: 70,
+    minimumBoxHeight: 70,
+    minimumStrokeCount: 1,
+    minimumSimilarity: 0.60,
     minimumMlConfidence: 45,
     categoryType: 'simple'
   },
   'Fish': {
-    requiredFeatures: ['Swimmer body outline', 'Tail fin'],
+    requiredFeatures: ['Horizontal swimmer body', 'Tail fin'],
     optionalFeatures: ['Eye dot', 'Side fins'],
     minimumInkPixels: 25,
-    minimumSimilarity: 0.55,
+    minimumStrokeLength: 150,
+    minimumBoxWidth: 80,
+    minimumBoxHeight: 55,
+    minimumStrokeCount: 1,
+    minimumSimilarity: 0.60,
     minimumMlConfidence: 45,
     categoryType: 'simple'
   },
   'Leaf': {
-    requiredFeatures: ['Tapered leaf contour', 'Center vein stroke'],
+    requiredFeatures: ['Tapered leaf contour', 'Center stem or vein stroke'],
     optionalFeatures: ['Side veins'],
     minimumInkPixels: 22,
-    minimumSimilarity: 0.50,
+    minimumStrokeLength: 130,
+    minimumBoxWidth: 55,
+    minimumBoxHeight: 65,
+    minimumStrokeCount: 1,
+    minimumSimilarity: 0.60,
     minimumMlConfidence: 40,
     categoryType: 'simple'
   },
@@ -469,70 +518,106 @@ export const OBJECT_PROFILES: Record<string, ObjectProfile> = {
     requiredFeatures: ['Main box body', 'Triangle roof peak'],
     optionalFeatures: ['Door', 'Windows', 'Chimney'],
     minimumInkPixels: 30,
-    minimumSimilarity: 0.55,
+    minimumStrokeLength: 180,
+    minimumBoxWidth: 80,
+    minimumBoxHeight: 80,
+    minimumStrokeCount: 2,
+    minimumSimilarity: 0.60,
     minimumMlConfidence: 45,
     categoryType: 'simple'
   },
   'Tree': {
-    requiredFeatures: ['Vertical trunk line', 'Leafy top canopy'],
+    requiredFeatures: ['Vertical trunk line or rect', 'Leafy top canopy'],
     optionalFeatures: ['Branches'],
     minimumInkPixels: 28,
-    minimumSimilarity: 0.55,
+    minimumStrokeLength: 170,
+    minimumBoxWidth: 70,
+    minimumBoxHeight: 80,
+    minimumStrokeCount: 2,
+    minimumSimilarity: 0.60,
     minimumMlConfidence: 45,
     categoryType: 'simple'
   },
   'Flower': {
-    requiredFeatures: ['Center core circle', 'At least 2 petal loops or stem'],
+    requiredFeatures: ['Center core circle', 'At least 3-4 petal loops or stem'],
     optionalFeatures: ['Stem', 'Leaves'],
     minimumInkPixels: 25,
-    minimumSimilarity: 0.55,
+    minimumStrokeLength: 170,
+    minimumBoxWidth: 70,
+    minimumBoxHeight: 70,
+    minimumStrokeCount: 2,
+    minimumSimilarity: 0.60,
     minimumMlConfidence: 45,
     categoryType: 'simple'
   },
   'Cup': {
-    requiredFeatures: ['One closed container shape (U or rectangle mug outline)', 'Container rim & bottom base'],
+    requiredFeatures: ['Container body (U-shape or mug outline)', 'Container rim & bottom base'],
     optionalFeatures: ['Side handle', 'Steam lines'],
-    minimumInkPixels: 30,
-    minimumSimilarity: 0.60,
-    minimumMlConfidence: 50,
+    minimumInkPixels: 28,
+    minimumStrokeLength: 170,
+    minimumBoxWidth: 70,
+    minimumBoxHeight: 70,
+    minimumStrokeCount: 1,
+    minimumSimilarity: 0.65,
+    minimumMlConfidence: 45,
     categoryType: 'simple'
   },
   'Book': {
     requiredFeatures: ['Rectangular page outline', 'Spine line or open pages'],
     optionalFeatures: ['Text lines', 'Bookmark'],
     minimumInkPixels: 28,
-    minimumSimilarity: 0.55,
+    minimumStrokeLength: 150,
+    minimumBoxWidth: 75,
+    minimumBoxHeight: 60,
+    minimumStrokeCount: 1,
+    minimumSimilarity: 0.60,
     minimumMlConfidence: 45,
     categoryType: 'simple'
   },
   'Car': {
-    requiredFeatures: ['Horizontal body chassis', 'Two wheel base regions'],
+    requiredFeatures: ['Horizontal body chassis', 'Two bottom wheels'],
     optionalFeatures: ['Windows', 'Roof arc'],
     minimumInkPixels: 35,
+    minimumStrokeLength: 200,
+    minimumBoxWidth: 90,
+    minimumBoxHeight: 60,
+    minimumStrokeCount: 2,
     minimumSimilarity: 0.60,
     minimumMlConfidence: 50,
     categoryType: 'complex'
   },
   'Rocket': {
-    requiredFeatures: ['Vertical tube body', 'Pointed nose cone'],
-    optionalFeatures: ['Bottom fins', 'Exhaust flame'],
+    requiredFeatures: ['Vertical tube body', 'Pointed nose cone', 'Bottom side fins'],
+    optionalFeatures: ['Exhaust flames', 'Porthole'],
     minimumInkPixels: 32,
+    minimumStrokeLength: 180,
+    minimumBoxWidth: 60,
+    minimumBoxHeight: 90,
+    minimumStrokeCount: 2,
     minimumSimilarity: 0.60,
     minimumMlConfidence: 50,
     categoryType: 'complex'
   },
   'Airplane': {
-    requiredFeatures: ['Central fuselage body', 'Crossing wing structure'],
-    optionalFeatures: ['Tail fin', 'Windows'],
+    requiredFeatures: ['Central fuselage body', 'Crossing wing structure', 'Tail fin'],
+    optionalFeatures: ['Engines', 'Windows'],
     minimumInkPixels: 32,
+    minimumStrokeLength: 200,
+    minimumBoxWidth: 90,
+    minimumBoxHeight: 80,
+    minimumStrokeCount: 2,
     minimumSimilarity: 0.60,
     minimumMlConfidence: 50,
     categoryType: 'complex'
   },
   'Bicycle': {
-    requiredFeatures: ['Two distinct wheel circular regions', 'Connecting frame structure'],
+    requiredFeatures: ['Two distinct wheel circles', 'Connecting frame structure'],
     optionalFeatures: ['Handlebars', 'Seat'],
     minimumInkPixels: 35,
+    minimumStrokeLength: 220,
+    minimumBoxWidth: 90,
+    minimumBoxHeight: 60,
+    minimumStrokeCount: 2,
     minimumSimilarity: 0.60,
     minimumMlConfidence: 50,
     categoryType: 'complex'
@@ -540,7 +625,11 @@ export const OBJECT_PROFILES: Record<string, ObjectProfile> = {
   'Cat': {
     requiredFeatures: ['Round head contour', 'Top triangular ear peaks'],
     optionalFeatures: ['Whiskers', 'Tail', 'Eyes'],
-    minimumInkPixels: 30,
+    minimumInkPixels: 28,
+    minimumStrokeLength: 160,
+    minimumBoxWidth: 70,
+    minimumBoxHeight: 70,
+    minimumStrokeCount: 2,
     minimumSimilarity: 0.55,
     minimumMlConfidence: 45,
     categoryType: 'complex'
@@ -565,25 +654,103 @@ export function validateObjectStructure(
   grayscale28: number[][],
   totalInkPixels: number = 100
 ): StructuralValidationResult {
-  const profile = OBJECT_PROFILES[targetCategory];
-  const minInk = profile ? profile.minimumInkPixels : 25;
+  const profile = OBJECT_PROFILES[targetCategory] || OBJECT_PROFILES['Cup'];
 
-  if (totalInkPixels < minInk) {
+  // Check if drawing is a single straight line when target is NOT a line
+  if (features.isStraightLine) {
     return {
       passed: false,
-      missingFeatures: [`Keep drawing... I need a little more detail (${totalInkPixels}/${minInk}px)`],
+      missingFeatures: ['Single straight line rejected (requires full shape)'],
       structuralScore: 0,
-      reason: `Ink coverage (${totalInkPixels}px) is below minimum required (${minInk}px).`
+      reason: 'Rejected: Sketch is a single straight line, not an object.'
     };
   }
 
   switch (targetCategory) {
-    case 'Cup': {
-      let leftWallInk = 0;
-      let rightWallInk = 0;
-      let bottomBaseInk = 0;
-      let bodyInk = 0;
+    case 'Circle': {
+      const missing: string[] = [];
+      const isLoop = features.hasClosedLoop || features.circularity >= 0.45;
+      const roundEnough = features.circularity >= 0.40;
+      const reasonableCorners = features.cornerCount <= 6;
 
+      if (!isLoop) missing.push('Closed Rounded Loop');
+      if (!roundEnough) missing.push('Circularity >= 0.45');
+      if (!reasonableCorners) missing.push('Too Many Jagged Corners (max 6)');
+
+      const passed = missing.length === 0;
+      return {
+        passed,
+        missingFeatures: missing,
+        structuralScore: passed ? 95 : 20,
+        reason: passed ? 'Closed round loop detected' : `Missing required features: ${missing.join(', ')}`
+      };
+    }
+
+    case 'Square': {
+      const missing: string[] = [];
+      const hasCornersOrLoop = features.cornerCount >= 3 || features.hasClosedLoop;
+      const ratioOk = features.aspectRatio >= 0.65 && features.aspectRatio <= 1.45;
+
+      if (!hasCornersOrLoop) missing.push('3-5 Box Corners or Closed Loop');
+      if (!ratioOk) missing.push('Square Aspect Ratio (0.65-1.45)');
+
+      const passed = missing.length === 0;
+      return {
+        passed,
+        missingFeatures: missing,
+        structuralScore: passed ? 95 : 20,
+        reason: passed ? 'Box outline & corners detected' : `Missing required features: ${missing.join(', ')}`
+      };
+    }
+
+    case 'Triangle': {
+      const missing: string[] = [];
+      const hasApexOrCorners = features.cornerCount >= 2 || features.hasClosedLoop;
+
+      if (!hasApexOrCorners) missing.push('3 Connected Sides & Apex Peak');
+
+      const passed = missing.length === 0;
+      return {
+        passed,
+        missingFeatures: missing,
+        structuralScore: passed ? 95 : 20,
+        reason: passed ? 'Triangular corners & apex detected' : `Missing required features: ${missing.join(', ')}`
+      };
+    }
+
+    case 'Star': {
+      const missing: string[] = [];
+      const hasStarFeatures = features.cornerCount >= 3 || features.strokeCount >= 2;
+
+      if (!hasStarFeatures) missing.push('Multi-Point Star Tips or Crossing Lines');
+      if (features.circularity > 0.85) missing.push('Not a Smooth Circle (requires pointy tips)');
+
+      const passed = missing.length === 0;
+      return {
+        passed,
+        missingFeatures: missing,
+        structuralScore: passed ? 95 : 25,
+        reason: passed ? 'Multi-point star tips detected' : `Missing required features: ${missing.join(', ')}`
+      };
+    }
+
+    case 'Heart': {
+      const missing: string[] = [];
+      const symmetric = features.symmetryHorizontal > 0.40;
+
+      if (!symmetric) missing.push('Symmetric Top Arches & V Apex');
+
+      const passed = missing.length === 0;
+      return {
+        passed,
+        missingFeatures: missing,
+        structuralScore: passed ? 95 : 25,
+        reason: passed ? 'Symmetric heart curve detected' : `Missing required features: ${missing.join(', ')}`
+      };
+    }
+
+    case 'Cup': {
+      let leftWallInk = 0, rightWallInk = 0, bottomBaseInk = 0, bodyInk = 0;
       for (let y = 0; y < 28; y++) {
         for (let x = 0; x < 28; x++) {
           if (grayscale28[y][x] > 30) {
@@ -598,10 +765,9 @@ export function validateObjectStructure(
       }
 
       const missing: string[] = [];
-      // Cup requires a closed container contour OR left wall, right wall, AND bottom base!
       if (!features.hasClosedLoop) {
-        if (leftWallInk < 3) missing.push('Left Cup Container Wall');
-        if (rightWallInk < 3) missing.push('Right Cup Container Wall');
+        if (leftWallInk < 3) missing.push('Left Container Wall');
+        if (rightWallInk < 3) missing.push('Right Container Wall');
         if (bottomBaseInk < 3) missing.push('Container Base / Bottom');
       }
       if (bodyInk < 10) missing.push('Container Body Volume');
@@ -611,17 +777,12 @@ export function validateObjectStructure(
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 20,
-        reason: passed
-          ? 'Closed container mug body & base detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Closed container mug body & base detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
     case 'Bicycle': {
-      let leftWheelInk = 0;
-      let rightWheelInk = 0;
-      let frameInk = 0;
-
+      let leftWheelInk = 0, rightWheelInk = 0, frameInk = 0;
       for (let y = 0; y < 28; y++) {
         for (let x = 0; x < 28; x++) {
           if (grayscale28[y][x] > 30) {
@@ -633,18 +794,16 @@ export function validateObjectStructure(
       }
 
       const missing: string[] = [];
-      if (leftWheelInk < 4) missing.push('Left Wheel Structure');
-      if (rightWheelInk < 4) missing.push('Right Wheel Structure');
-      if (frameInk < 4) missing.push('Connecting Frame');
+      if (leftWheelInk < 3) missing.push('Left Wheel Structure');
+      if (rightWheelInk < 3) missing.push('Right Wheel Structure');
+      if (frameInk < 3) missing.push('Connecting Frame');
 
       const passed = missing.length === 0;
       return {
         passed,
         missingFeatures: missing,
-        structuralScore: passed ? 90 : Math.max(15, 75 - missing.length * 25),
-        reason: passed
-          ? 'Two distinct wheels & connecting frame detected'
-          : `Missing required features: ${missing.join(', ')}`
+        structuralScore: passed ? 90 : 20,
+        reason: passed ? 'Two distinct wheels & connecting frame detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -661,18 +820,16 @@ export function validateObjectStructure(
       }
 
       const missing: string[] = [];
-      if (features.aspectRatio < 0.90) missing.push('Horizontal Chassis Orientation');
-      if (leftInk < 4 || rightInk < 4) missing.push('Chassis Body Span');
-      if (bottomInk < 5) missing.push('Dual Wheel Base');
+      if (features.aspectRatio < 0.85) missing.push('Horizontal Chassis Orientation');
+      if (leftInk < 3 || rightInk < 3) missing.push('Chassis Body Span');
+      if (bottomInk < 4) missing.push('Dual Wheel Base');
 
       const passed = missing.length === 0;
       return {
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 25,
-        reason: passed
-          ? 'Horizontal chassis body & dual wheel base detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Horizontal chassis body & dual wheel base detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -689,17 +846,15 @@ export function validateObjectStructure(
       }
 
       const missing: string[] = [];
-      if (centerInk < 8) missing.push('Central Fuselage Line');
-      if (upperInk + lowerInk < 4) missing.push('Wing Cross Structure');
+      if (centerInk < 7) missing.push('Central Fuselage Line');
+      if (upperInk + lowerInk < 3) missing.push('Wing Cross Structure');
 
       const passed = missing.length === 0;
       return {
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 25,
-        reason: passed
-          ? 'Central fuselage & wing cross structure detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Central fuselage & wing structure detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -716,18 +871,16 @@ export function validateObjectStructure(
       }
 
       const missing: string[] = [];
-      if (features.aspectRatio > 1.35) missing.push('Tall Vertical Orientation');
+      if (features.aspectRatio > 1.40) missing.push('Tall Vertical Orientation');
       if (topInk < 2) missing.push('Pointed Cone Tip');
-      if (middleInk + bottomInk < 8) missing.push('Rocket Body Tube');
+      if (middleInk + bottomInk < 6) missing.push('Rocket Body Tube');
 
       const passed = missing.length === 0;
       return {
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 25,
-        reason: passed
-          ? 'Tall rocket tube & cone tip detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Tall rocket tube & cone tip detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -747,9 +900,7 @@ export function validateObjectStructure(
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 25,
-        reason: passed
-          ? 'Round head & top ear triangles detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Round head & top ear triangles detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -766,16 +917,14 @@ export function validateObjectStructure(
 
       const missing: string[] = [];
       if (topRoofInk < 3) missing.push('Triangle Roof Peak');
-      if (baseInk < 6) missing.push('Square House Base');
+      if (baseInk < 5) missing.push('Square House Base');
 
       const passed = missing.length === 0;
       return {
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 30,
-        reason: passed
-          ? 'House base & triangle roof peak detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'House base & triangle roof peak detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -785,13 +934,13 @@ export function validateObjectStructure(
         for (let x = 0; x < 28; x++) {
           if (grayscale28[y][x] > 30) {
             if (y < 16) canopyInk++;
-            if (y >= 16 && x >= 7 && x <= 21) trunkInk++;
+            if (y >= 16 && x >= 6 && x <= 22) trunkInk++;
           }
         }
       }
 
       const missing: string[] = [];
-      if (canopyInk < 6) missing.push('Top Tree Canopy');
+      if (canopyInk < 5) missing.push('Top Tree Canopy');
       if (trunkInk < 2) missing.push('Vertical Trunk Line');
 
       const passed = missing.length === 0;
@@ -799,9 +948,7 @@ export function validateObjectStructure(
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 30,
-        reason: passed
-          ? 'Vertical trunk line & top canopy detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Vertical trunk line & top canopy detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -825,9 +972,7 @@ export function validateObjectStructure(
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 30,
-        reason: passed
-          ? 'Center core & petal loops detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Center core & petal loops detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -847,9 +992,7 @@ export function validateObjectStructure(
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 35,
-        reason: passed
-          ? 'Round fruit body & stem detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Round fruit body & stem detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -870,9 +1013,7 @@ export function validateObjectStructure(
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 35,
-        reason: passed
-          ? 'Horizontal swimmer body & tail fin detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Horizontal swimmer body & tail fin detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -883,9 +1024,7 @@ export function validateObjectStructure(
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 35,
-        reason: passed
-          ? 'Tapered leaf outline detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Tapered leaf outline detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -909,9 +1048,7 @@ export function validateObjectStructure(
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 35,
-        reason: passed
-          ? 'Sun core & radiating rays detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Sun core & radiating rays detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -922,9 +1059,7 @@ export function validateObjectStructure(
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 35,
-        reason: passed
-          ? 'Crescent curve contour detected'
-          : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Crescent curve contour detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -937,64 +1072,7 @@ export function validateObjectStructure(
         passed,
         missingFeatures: missing,
         structuralScore: passed ? 90 : 35,
-        reason: passed
-          ? 'Rectangular page layout detected'
-          : `Missing required features: ${missing.join(', ')}`
-      };
-    }
-
-    case 'Circle': {
-      const passed = (features.circularity >= 0.35 || features.hasClosedLoop) && features.cornerCount <= 5;
-      const missing = passed ? [] : ['Smooth Rounded Closed Loop'];
-      return {
-        passed,
-        missingFeatures: missing,
-        structuralScore: passed ? 95 : 30,
-        reason: passed ? 'Smooth round closed loop detected' : `Missing required features: ${missing.join(', ')}`
-      };
-    }
-
-    case 'Square': {
-      const passed = features.cornerCount >= 2 || features.hasClosedLoop;
-      const missing = passed ? [] : ['Quadrilateral Corners or Box'];
-      return {
-        passed,
-        missingFeatures: missing,
-        structuralScore: passed ? 95 : 30,
-        reason: passed ? '4-corner box outline detected' : `Missing required features: ${missing.join(', ')}`
-      };
-    }
-
-    case 'Triangle': {
-      const passed = features.cornerCount >= 2 || features.hasClosedLoop;
-      const missing = passed ? [] : ['3 Triangular Corners & Peak'];
-      return {
-        passed,
-        missingFeatures: missing,
-        structuralScore: passed ? 95 : 30,
-        reason: passed ? 'Triangular corners & apex detected' : `Missing required features: ${missing.join(', ')}`
-      };
-    }
-
-    case 'Star': {
-      const passed = features.cornerCount >= 3 || features.strokeCount >= 2;
-      const missing = passed ? [] : ['Multi-Point Star Tips'];
-      return {
-        passed,
-        missingFeatures: missing,
-        structuralScore: passed ? 95 : 30,
-        reason: passed ? 'Multi-point star shape detected' : `Missing required features: ${missing.join(', ')}`
-      };
-    }
-
-    case 'Heart': {
-      const passed = features.symmetryHorizontal > 0.42;
-      const missing = passed ? [] : ['Symmetric Top Arches & V Apex'];
-      return {
-        passed,
-        missingFeatures: missing,
-        structuralScore: passed ? 95 : 30,
-        reason: passed ? 'Symmetric heart curve detected' : `Missing required features: ${missing.join(', ')}`
+        reason: passed ? 'Rectangular page layout detected' : `Missing required features: ${missing.join(', ')}`
       };
     }
 
@@ -1032,7 +1110,38 @@ export function evaluateDecisionEngine(
     ? grayscale28
     : Array(28).fill(0).map(() => Array(28).fill(0));
 
-  // 1. Stage 2: Structural Validation Gatekeeper
+  const totalStrokeLength = features.totalStrokeLength || 0;
+  const boxWidth = features.boxWidth || 0;
+  const boxHeight = features.boxHeight || 0;
+
+  // STAGE 1: Universal Minimum Requirements Gate & State Machine
+  let recognitionState: RecognitionState = 'READY_FOR_RECOGNITION';
+  let stateMessage = 'Validating object profile...';
+  let isLocked = false;
+
+  if (totalInkPixels < 15 || features.strokeCount === 0) {
+    recognitionState = 'EMPTY_CANVAS';
+    stateMessage = 'Canvas is empty. Start drawing...';
+    isLocked = true;
+  } else if (features.isStraightLine) {
+    recognitionState = 'INSUFFICIENT_INFORMATION';
+    stateMessage = 'Rejected: Single straight line detected (not a shape)';
+    isLocked = true;
+  } else if (totalStrokeLength < profile.minimumStrokeLength) {
+    recognitionState = 'DRAWING_STARTED';
+    stateMessage = `Stroke length too short (${totalStrokeLength}/${profile.minimumStrokeLength}px)`;
+    isLocked = true;
+  } else if (boxWidth < profile.minimumBoxWidth || boxHeight < profile.minimumBoxHeight) {
+    recognitionState = 'INSUFFICIENT_INFORMATION';
+    stateMessage = `Drawing size too small (${boxWidth}×${boxHeight}px, min ${profile.minimumBoxWidth}×${profile.minimumBoxHeight}px)`;
+    isLocked = true;
+  } else if (features.strokeCount < profile.minimumStrokeCount) {
+    recognitionState = 'INSUFFICIENT_INFORMATION';
+    stateMessage = `Need at least ${profile.minimumStrokeCount} strokes for ${targetCategory}`;
+    isLocked = true;
+  }
+
+  // STAGE 2: Structural Validation Gatekeeper
   const structuralRes = validateObjectStructure(targetCategory, features, activeGrayscale, totalInkPixels);
 
   let geometryScore = 50;
@@ -1080,34 +1189,50 @@ export function evaluateDecisionEngine(
     }
   }
 
-  // Weighted score calculation
-  const calculatedScore = Math.round(
-    mlRawConfidence * 0.35 +
-    structuralRes.structuralScore * 0.30 +
-    shapeSimilarity * 0.20 +
-    geometryScore * 0.10 +
-    strokeQuality * 0.05
-  );
+  // STAGE 3: CATEGORY-BASED SCORE WEIGHTING
+  let calculatedScore = 50;
+  if (categoryType === 'geometry') {
+    // 90% Rule-based Geometry + 10% ML
+    calculatedScore = Math.round(geometryScore * 0.90 + mlRawConfidence * 0.10);
+  } else if (categoryType === 'simple') {
+    // 60% Rule-based Features + 40% ML
+    calculatedScore = Math.round(featureScore * 0.60 + mlRawConfidence * 0.40);
+  } else {
+    // 40% Rule-based Features + 60% ML
+    calculatedScore = Math.round(featureScore * 0.40 + mlRawConfidence * 0.60);
+  }
 
-  // STAGE 4: STRICT GATEKEEPING
-  // IF STRUCTURAL VALIDATION IS FALSE -> REJECT IMMEDIATELY!
-  // Missing essential features CAN NEVER be compensated by ML confidence!
+  // STAGE 4: ACCEPTANCE DECISION & LOCKING
   let isSuccess = false;
   let finalScore = calculatedScore;
 
-  if (!structuralRes.passed) {
+  if (isLocked) {
     isSuccess = false;
-    finalScore = Math.min(calculatedScore, targetThreshold - 12);
+    finalScore = Math.min(calculatedScore, targetThreshold - 10);
+  } else if (!structuralRes.passed) {
+    isSuccess = false;
+    recognitionState = 'VALIDATING_OBJECT';
+    stateMessage = `Missing required criteria: ${structuralRes.missingFeatures.join(', ')}`;
+    finalScore = Math.min(calculatedScore, targetThreshold - 10);
   } else {
-    isSuccess = totalInkPixels >= profile.minimumInkPixels && calculatedScore >= targetThreshold;
-    if (isSuccess) {
+    if (calculatedScore >= targetThreshold) {
+      isSuccess = true;
+      recognitionState = 'RECOGNIZED';
+      stateMessage = `Recognized ${targetCategory}! PASS (${calculatedScore}%)`;
       finalScore = Math.max(calculatedScore, targetThreshold + 5);
+    } else {
+      isSuccess = false;
+      recognitionState = 'VALIDATING_OBJECT';
+      stateMessage = `Criteria passed, waiting for higher similarity (${calculatedScore}% / ${targetThreshold}%)`;
     }
   }
 
   return {
     targetWord: targetCategory,
     categoryType,
+    recognitionState,
+    stateMessage,
+    isLocked,
     geometryScore,
     featureScore,
     shapeSimilarity,
@@ -1115,11 +1240,14 @@ export function evaluateDecisionEngine(
     strokeQuality,
     structuralPassed: structuralRes.passed,
     missingFeatures: structuralRes.missingFeatures,
+    totalStrokeLength,
+    boxWidth,
+    boxHeight,
     finalScore,
     targetThreshold,
     isSuccess,
-    essentialMatched: structuralRes.passed,
-    primaryReason: structuralRes.reason
+    essentialMatched: structuralRes.passed && !isLocked,
+    primaryReason: isLocked ? stateMessage : structuralRes.reason
   };
 }
 export function extractFeatures(
@@ -1159,7 +1287,7 @@ export function extractFeatures(
   }
 
   // Blank or near-empty canvas check
-  if (totalInkPixels < 20 || minX > maxX || minY > maxY) {
+  if (totalInkPixels < 15 || minX > maxX || minY > maxY) {
     const emptyGrayscale = Array(28).fill(0).map(() => Array(28).fill(0));
     return {
       features: {
@@ -1172,7 +1300,11 @@ export function extractFeatures(
         leftHeavyRatio: 0.5,
         strokeCount: 0,
         cornerCount: 0,
-        hasClosedLoop: false
+        hasClosedLoop: false,
+        totalStrokeLength: 0,
+        boxWidth: 0,
+        boxHeight: 0,
+        isStraightLine: false
       },
       grayscale28: emptyGrayscale,
       totalInkPixels
@@ -1373,6 +1505,47 @@ export function extractFeatures(
     }
   });
 
+  // 7. Calculate Total Stroke Length and Straight Line status
+  let totalStrokeLength = 0;
+  let startX = 0, startY = 0, endX = 0, endY = 0;
+  let firstPointSet = false;
+
+  cleanedStrokes.forEach(stroke => {
+    if (stroke.length > 0) {
+      if (!firstPointSet) {
+        startX = stroke[0].x;
+        startY = stroke[0].y;
+        firstPointSet = true;
+      }
+      endX = stroke[stroke.length - 1].x;
+      endY = stroke[stroke.length - 1].y;
+
+      for (let i = 1; i < stroke.length; i++) {
+        const dx = stroke[i].x - stroke[i - 1].x;
+        const dy = stroke[i].y - stroke[i - 1].y;
+        totalStrokeLength += Math.sqrt(dx * dx + dy * dy);
+      }
+    }
+  });
+
+  const dxEnd = endX - startX;
+  const dyEnd = endY - startY;
+  const endpointDistance = Math.sqrt(dxEnd * dxEnd + dyEnd * dyEnd);
+
+  // A drawing is considered a single straight line if:
+  // - effective stroke count <= 2
+  // - total stroke length >= 30px
+  // - corner count === 0
+  // - no closed loop
+  // - endpoint distance / total stroke length >= 0.82
+  const isStraightLine =
+    effectiveStrokeCount <= 2 &&
+    totalStrokeLength >= 30 &&
+    cornerCount === 0 &&
+    !hasClosedLoop &&
+    totalStrokeLength > 0 &&
+    (endpointDistance / totalStrokeLength) >= 0.82;
+
   return {
     features: {
       aspectRatio,
@@ -1384,7 +1557,11 @@ export function extractFeatures(
       leftHeavyRatio,
       strokeCount: effectiveStrokeCount,
       cornerCount,
-      hasClosedLoop
+      hasClosedLoop,
+      totalStrokeLength: Math.round(totalStrokeLength),
+      boxWidth: boxW,
+      boxHeight: boxH,
+      isStraightLine
     },
     grayscale28,
     totalInkPixels
