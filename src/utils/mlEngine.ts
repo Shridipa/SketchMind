@@ -61,29 +61,30 @@ export function checkPartialCredit(
   return { isPartial: false, bonusPoints: 0, message: '' };
 }
 
-// The 20 categories for the 20-Sketch Challenge
+// The 20 categories for the 20-Sketch Challenge (All 20 from Google Quick, Draw!)
 export const CATEGORIES = [
-  'Circle',
-  'Square',
-  'Triangle',
-  'Star',
-  'Heart',
-  'Sun',
-  'Moon',
+  'Airplane',
   'Apple',
-  'Fish',
-  'Leaf',
-  'House',
-  'Tree',
-  'Flower',
-  'Cup',
+  'Bicycle',
   'Book',
   'Car',
+  'Cat',
+  'Circle',
+  'Clock',
+  'Cloud',
+  'Cup',
+  'Fish',
+  'Flower',
+  'House',
+  'Moon',
   'Rocket',
-  'Airplane',
-  'Bicycle',
-  'Cat'
+  'Star',
+  'Sun',
+  'Tree',
+  'Triangle',
+  'Square'
 ];
+
 
 export const CHALLENGES_20: Challenge[] = [
   // Sketches 1-5 (Very Easy - 50% Threshold)
