@@ -174,19 +174,29 @@ export default function App() {
             }
           }
 
-          // Full timeout handling - Run Enhanced Final Recognition Pass before timing out
+          // Full timeout handling - Run Final Recognition Pass through Decision Engine before timing out
           if (nextTime >= allowedMax) {
             if (lastDrawingStateRef.current) {
               const { ctx, width, height, strokeCount, strokePoints } = lastDrawingStateRef.current;
-              const enhancedResults = enhancedPredictDrawing(ctx, width, height, strokeCount, strokePoints);
-              const targetMatch = enhancedResults.find(
+              const { features: extracted, grayscale28, totalInkPixels: inkCount } = extractFeatures(ctx, width, height, strokeCount, strokePoints);
+              const targetThreshold = Math.max(25, getTargetThreshold(activeChallenge.difficulty, activeChallenge.level) - 10);
+              const rawResults = predictDrawing(extracted, grayscale28, inkCount);
+              const targetMatch = rawResults.find(
                 p => p.className.toLowerCase().trim() === activeChallenge.word.toLowerCase().trim()
               );
-              const enhancedConf = targetMatch ? Math.round(targetMatch.probability * 100) : 0;
-              const targetThreshold = Math.max(35, getTargetThreshold(activeChallenge.difficulty) - 10);
+              const conf = targetMatch ? Math.round(targetMatch.probability * 100) : 0;
 
-              if (enhancedConf >= targetThreshold) {
-                triggerSketchSuccess(75, enhancedConf);
+              const decision = evaluateDecisionEngine(
+                activeChallenge.word,
+                extracted,
+                inkCount,
+                conf,
+                targetThreshold,
+                grayscale28
+              );
+
+              if (decision.isSuccess) {
+                triggerSketchSuccess(75, decision.finalScore);
                 return nextTime;
               }
             }
@@ -323,7 +333,7 @@ export default function App() {
       const activeChallenge = sketchList[currentSketchIdx];
       if (!activeChallenge) return;
 
-      let targetThreshold = getTargetThreshold(activeChallenge.difficulty);
+      let targetThreshold = getTargetThreshold(activeChallenge.difficulty, activeChallenge.level);
 
       // Dynamic Assistance Threshold Reductions based on seconds spent on sketch
       if (timeSpentOnCurrentSketch >= 25) {
@@ -337,7 +347,7 @@ export default function App() {
         targetThreshold -= 10;
       }
 
-      targetThreshold = Math.max(35, targetThreshold);
+      targetThreshold = Math.max(25, targetThreshold);
 
       const targetMatch = smoothedResults.find(
         p => p.className.toLowerCase().trim() === activeChallenge.word.toLowerCase().trim()
@@ -354,17 +364,11 @@ export default function App() {
         grayscale28
       );
 
-      const effectiveConfidence = Math.max(confidence, decision.finalScore);
+      // Authoritative confidence score strictly matches Decision Engine final score
+      confidence = decision.finalScore;
 
-      // Smart Recognition Recovery Boost at >=20s if close
-      if (timeSpentOnCurrentSketch >= 20 && effectiveConfidence >= targetThreshold - 15) {
-        confidence = Math.min(100, effectiveConfidence + 15);
-      } else {
-        confidence = effectiveConfidence;
-      }
-
-      // Save best drawing for masterpiece plaque
-      if (confidence > 50 && (!bestDrawing || confidence > bestDrawing.confidence)) {
+      // Save best drawing for masterpiece plaque when decision is successful
+      if (decision.isSuccess && (!bestDrawing || confidence > bestDrawing.confidence)) {
         setBestDrawing({
           category: activeChallenge.word,
           level: activeChallenge.level,

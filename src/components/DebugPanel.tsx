@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { Bug, X, CheckCircle, AlertCircle, ShieldCheck, Layers, Lock, Unlock, Eye } from 'lucide-react';
+import { Bug, X, CheckCircle, AlertCircle, ShieldCheck, Layers, Lock, Unlock, Eye, Play, Sparkles, Check, AlertTriangle } from 'lucide-react';
 import { DrawingFeatures, Prediction } from '../types';
 import { evaluateDecisionEngine, RecognitionDecision, OBJECT_PROFILES } from '../utils/mlEngine';
+import { runAutomatedTestSuite, TestSuiteSummary } from '../utils/sketchSimulator';
 
 interface DebugPanelProps {
   isOpen: boolean;
@@ -26,6 +27,18 @@ export default function DebugPanel({
   targetThreshold
 }: DebugPanelProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [activeTab, setActiveTab] = useState<'decision' | 'qa_suite'>('decision');
+  const [testSummary, setTestSummary] = useState<TestSuiteSummary | null>(null);
+  const [isRunningTests, setIsRunningTests] = useState(false);
+
+  const handleRunTests = () => {
+    setIsRunningTests(true);
+    setTimeout(() => {
+      const summary = runAutomatedTestSuite();
+      setTestSummary(summary);
+      setIsRunningTests(false);
+    }, 100);
+  };
 
   useEffect(() => {
     if (!canvasRef.current || !grayscale28 || grayscale28.length !== 28) return;
@@ -92,17 +105,133 @@ export default function DebugPanel({
       <div className="bg-slate-800/90 px-4 py-2.5 flex items-center justify-between border-b border-slate-700/80">
         <div className="flex items-center gap-2">
           <Bug className="w-4 h-4 text-emerald-400" />
-          <span className="font-bold text-slate-200">Recognition Decision Engine</span>
+          <span className="font-bold text-slate-200">Recognition Engine</span>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setActiveTab('decision')}
+            className={`px-2 py-1 rounded text-[10px] font-bold ${activeTab === 'decision' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            Telemetry
+          </button>
+          <button
+            onClick={() => setActiveTab('qa_suite')}
+            className={`px-2 py-1 rounded text-[10px] font-bold ${activeTab === 'qa_suite' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            QA Suite
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white transition-colors ml-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      <div className="p-4 space-y-3.5 max-h-[80vh] overflow-y-auto">
+      {activeTab === 'qa_suite' ? (
+        <div className="p-4 space-y-3.5 max-h-[80vh] overflow-y-auto">
+          <div className="bg-slate-950/80 rounded-xl p-3 border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  Automated QA & Regression Suite
+                </h4>
+                <p className="text-[10px] text-slate-400">Runs 100+ synthetic drawing tests across shapes & targets</p>
+              </div>
+              <button
+                onClick={handleRunTests}
+                disabled={isRunningTests}
+                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-[10px] flex items-center gap-1.5 shadow-lg disabled:opacity-50"
+              >
+                <Play className="w-3 h-3 fill-current" />
+                {isRunningTests ? 'Running...' : 'Run Suite'}
+              </button>
+            </div>
+
+            {testSummary ? (
+              <div className="space-y-3 pt-2">
+                {/* Metrics Grid */}
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                    <span className="text-slate-400 block">Pass Rate:</span>
+                    <span className="text-base font-bold text-emerald-400">{testSummary.passRatePercentage}%</span>
+                    <span className="text-[9px] text-slate-500 block">{testSummary.passedCount} / {testSummary.totalTests} Passed</span>
+                  </div>
+
+                  <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                    <span className="text-slate-400 block">False Positive Rate:</span>
+                    <span className={`text-base font-bold ${testSummary.falsePositiveRatePercentage <= 1 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {testSummary.falsePositiveRatePercentage}%
+                    </span>
+                    <span className="text-[9px] text-slate-500 block">Goal: &lt;1%</span>
+                  </div>
+
+                  <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                    <span className="text-slate-400 block">False Negative Rate:</span>
+                    <span className="text-base font-bold text-cyan-400">{testSummary.falseNegativeRatePercentage}%</span>
+                    <span className="text-[9px] text-slate-500 block">Goal: &lt;5%</span>
+                  </div>
+
+                  <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                    <span className="text-slate-400 block">Avg Inference:</span>
+                    <span className="text-base font-bold text-purple-400">{testSummary.avgInferenceTimeMs} ms</span>
+                    <span className="text-[9px] text-slate-500 block">Goal: &lt;100ms</span>
+                  </div>
+                </div>
+
+                {/* Category Breakdown */}
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold block">
+                    Category Pass Rates
+                  </span>
+                  {Object.entries(testSummary.categoryResults).map(([cat, res]) => {
+                    const r = res as { total: number; passed: number; passRate: number };
+                    return (
+                      <div key={cat} className="flex justify-between items-center text-[10px] bg-slate-900/50 p-1.5 rounded border border-slate-800">
+                        <span className="text-slate-300 capitalize">{cat.replace('_', ' ')}</span>
+                        <span className="font-bold text-emerald-400">{r.passed} / {r.total} ({r.passRate}%)</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Sample Test Cases */}
+                <div className="space-y-1 pt-1">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold block">
+                    Test Executions ({testSummary.testCases.length})
+                  </span>
+                  <div className="max-h-40 overflow-y-auto space-y-1 text-[10px]">
+                    {testSummary.testCases.slice(0, 15).map(tc => (
+                      <div
+                        key={tc.id}
+                        className={`p-1.5 rounded border flex items-center justify-between ${
+                          tc.passed ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-300' : 'bg-rose-950/20 border-rose-800/40 text-rose-300'
+                        }`}
+                      >
+                        <div className="truncate pr-2">
+                          <span className="font-bold mr-1">[{tc.id}]</span>
+                          <span>{tc.name}</span>
+                        </div>
+                        <span className="font-bold text-[9px] px-1 rounded uppercase bg-slate-900">
+                          {tc.actualOutcome}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-6 text-slate-400 text-[11px] space-y-2">
+                <AlertTriangle className="w-8 h-8 text-purple-400 mx-auto opacity-60" />
+                <p>Click "Run Suite" to execute synthetic sketch simulations and regression verification.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="p-4 space-y-3.5 max-h-[80vh] overflow-y-auto">
         {/* Stage 1: Recognition State Machine */}
         <div className={`rounded-xl p-3 border space-y-2 ${
           decision.isLocked
@@ -233,6 +362,70 @@ export default function DebugPanel({
           )}
         </div>
 
+        {/* Target Object Evaluation Box (Clear Reason & Diagnostics) */}
+        <div className="bg-slate-950/90 rounded-xl p-3 border border-cyan-500/30 space-y-2">
+          <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
+            <span className="text-[10px] text-cyan-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              {targetWord} Evaluation
+            </span>
+            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+              decision.isSuccess ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+            }`}>
+              {decision.isSuccess ? 'ACCEPTED' : 'REJECTED'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+            <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800 flex justify-between">
+              <span className="text-slate-400">Candidate Generated:</span>
+              <span className="font-bold text-emerald-400">YES</span>
+            </div>
+            <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800 flex justify-between">
+              <span className="text-slate-400">Corner Count:</span>
+              <span className="font-bold text-cyan-300">{features?.cornerCount ?? 0}</span>
+            </div>
+            <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800 flex justify-between">
+              <span className="text-slate-400">Closed Loop:</span>
+              <span className={`font-bold ${features?.hasClosedLoop ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {features?.hasClosedLoop ? 'YES' : 'NO'}
+              </span>
+            </div>
+            <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800 flex justify-between">
+              <span className="text-slate-400">Aspect Ratio:</span>
+              <span className="font-bold text-slate-200">{features?.aspectRatio ?? 1.0}</span>
+            </div>
+            <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800 flex justify-between">
+              <span className="text-slate-400">Ref Similarity:</span>
+              <span className="font-bold text-purple-400">{decision.shapeSimilarity}%</span>
+            </div>
+            <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800 flex justify-between">
+              <span className="text-slate-400">Hu Moments Score:</span>
+              <span className="font-bold text-amber-400">{decision.strokeQuality}%</span>
+            </div>
+            <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800 flex justify-between">
+              <span className="text-slate-400">Contour Score:</span>
+              <span className="font-bold text-cyan-400">{decision.featureScore}%</span>
+            </div>
+            <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800 flex justify-between">
+              <span className="text-slate-400">Neural Signal:</span>
+              <span className="font-bold text-blue-400">{decision.mlConfidence}%</span>
+            </div>
+          </div>
+
+          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800 space-y-1">
+            <div className="flex justify-between items-center text-[10px] font-bold">
+              <span className="text-slate-300">Final Score vs Goal:</span>
+              <span className={decision.isSuccess ? 'text-emerald-400' : 'text-amber-400'}>
+                {decision.finalScore}% / {targetThreshold}%
+              </span>
+            </div>
+            <div className="text-[10px] text-slate-400">
+              Reason: <span className="text-slate-200 font-semibold">{decision.primaryReason}</span>
+            </div>
+          </div>
+        </div>
+
         {/* Multi-Signal Score Breakdown */}
         <div className="bg-slate-950/80 rounded-xl p-3 border border-slate-800 space-y-2">
           <div className="flex justify-between items-center border-b border-slate-800 pb-1">
@@ -244,47 +437,47 @@ export default function DebugPanel({
 
           <div className="space-y-1.5 text-[11px]">
             <div className="flex justify-between items-center">
-              <span className="text-slate-300">TensorFlow Confidence</span>
+              <span className="text-slate-300">Reference Sketch Similarity</span>
               <div className="flex gap-2 items-center">
-                <span className="text-[10px] text-slate-500">35%</span>
-                <span className="font-bold text-blue-400">{decision.mlConfidence}%</span>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center">
-              <span className="text-slate-300">Structural Feature Check</span>
-              <div className="flex gap-2 items-center">
-                <span className="text-[10px] text-slate-500">30%</span>
-                <span className="font-bold text-cyan-400">{decision.featureScore}%</span>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center">
-              <span className="text-slate-300">Shape Similarity</span>
-              <div className="flex gap-2 items-center">
-                <span className="text-[10px] text-slate-500">20%</span>
+                <span className="text-[10px] text-slate-500">40%</span>
                 <span className="font-bold text-purple-400">{decision.shapeSimilarity}%</span>
               </div>
             </div>
 
             <div className="flex justify-between items-center">
-              <span className="text-slate-300">Geometry Score</span>
+              <span className="text-slate-300">Contour Structural Match</span>
               <div className="flex gap-2 items-center">
-                <span className="text-[10px] text-slate-500">10%</span>
+                <span className="text-[10px] text-slate-500">20%</span>
+                <span className="font-bold text-cyan-400">{decision.featureScore}%</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <span className="text-slate-300">Target Geometry Rules</span>
+              <div className="flex gap-2 items-center">
+                <span className="text-[10px] text-slate-500">15%</span>
                 <span className="font-bold text-emerald-400">{decision.geometryScore}%</span>
               </div>
             </div>
 
             <div className="flex justify-between items-center">
-              <span className="text-slate-300">Stroke Quality</span>
+              <span className="text-slate-300">Hu Moments Distance</span>
               <div className="flex gap-2 items-center">
-                <span className="text-[10px] text-slate-500">5%</span>
+                <span className="text-[10px] text-slate-500">15%</span>
                 <span className="font-bold text-amber-400">{decision.strokeQuality}%</span>
               </div>
             </div>
 
+            <div className="flex justify-between items-center">
+              <span className="text-slate-300">CNN Embedding Signal</span>
+              <div className="flex gap-2 items-center">
+                <span className="text-[10px] text-slate-500">10%</span>
+                <span className="font-bold text-blue-400">{decision.mlConfidence}%</span>
+              </div>
+            </div>
+
             <div className="flex justify-between items-center pt-1 border-t border-slate-800 font-bold">
-              <span className="text-white">Final Decision Score</span>
+              <span className="text-white">Weighted Decision Score</span>
               <span className={decision.isSuccess ? 'text-emerald-400' : 'text-amber-400'}>
                 {decision.finalScore}%
               </span>
@@ -319,6 +512,7 @@ export default function DebugPanel({
           </div>
         </div>
       </div>
+      )}
     </motion.div>
   );
 }

@@ -88,4 +88,7 @@ export interface DrawingFeatures {
   boxWidth: number;
   boxHeight: number;
   isStraightLine: boolean;
+  connectedComponentsCount?: number;
+  closedContourDistance?: number;
+  canvasCompletenessScore?: number;
 }
