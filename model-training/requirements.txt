@@ -1,0 +1,8 @@
+streamlit
+streamlit-drawable-canvas
+streamlit-autorefresh
+tensorflow==2.15.1
+numpy==1.26.4
+pandas
+pillow
+opencv-python

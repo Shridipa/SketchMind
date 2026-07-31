@@ -169,7 +169,7 @@ export default function App() {
   };
 
   // Real-time canvas drawing analysis trigger
-  const handleDrawingChange = useCallback((
+  const handleDrawingChange = useCallback(async (
     ctx: CanvasRenderingContext2D,
     width: number,
     height: number,
@@ -183,8 +183,8 @@ export default function App() {
     setFeatures(extracted);
     setGrayscale(grayscale28);
 
-    // 2. Predict using Softmax mathematical model
-    const results = predictDrawing(extracted, grayscale28);
+    // 2. Predict using TensorFlow model
+    const results = await predictDrawing(ctx.canvas);
     setPredictions(results);
 
     // Find confidence for our target word
