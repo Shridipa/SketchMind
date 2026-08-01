@@ -19,12 +19,12 @@ print("Testing :", X_test.shape)
 
 # Build CNN
 model = tf.keras.Sequential([
+    tf.keras.Input(shape=(28, 28, 1)),
 
     tf.keras.layers.Conv2D(
         32,
         (3,3),
-        activation="relu",
-        input_shape=(28,28,1)
+        activation="relu"
     ),
 
     tf.keras.layers.MaxPooling2D((2,2)),
