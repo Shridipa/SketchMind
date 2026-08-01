@@ -1,12 +1,17 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
-.DS_Store
 
-.streamlit/
+# Node
+node_modules/
 
-.vscode/
+# Dataset
+dataset/
 
-.env
+# Training outputs
+model-training/processed/
 
-*.log
+# Optional training artifacts (if not needed in repo)
+model-training/saved_model/
+model-training/saved_model.zip
