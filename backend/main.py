@@ -16,13 +16,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'model-training
 
 from predictor import Predictor
 from game import Game
-from leaderboard import save_score, get_leaderboard
+from leaderboard_store import get_top_players, initialise_database, record_game_result
 
 # ============================================================
 # INITIALIZATION
 # ============================================================
 
 app = FastAPI(title="SketchMind Backend")
+
+
+@app.on_event("startup")
+async def initialise_leaderboard() -> None:
+    initialise_database()
 
 # Load predictor once at startup
 predictor = Predictor()
@@ -88,8 +93,11 @@ class GameResultResponse(BaseModel):
 
 class LeaderboardEntry(BaseModel):
     rank: int
-    name: str
-    score: int
+    player_name: str
+    games_played: int
+    average_score: float
+    best_score: int
+    average_accuracy: float
 
 
 # ============================================================
@@ -235,8 +243,11 @@ async def end_game(player: str):
 
     game = games[player]
 
-    # Save to leaderboard
-    save_score(player, game.score)
+    # Store the existing final game result; no score or ML logic is changed here.
+    try:
+        record_game_result(player, game.score, game.accuracy())
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
     result = GameResultResponse(
         player=player,
@@ -258,29 +269,9 @@ async def end_game(player: str):
 
 @app.get("/api/leaderboard")
 async def get_top_scores(limit: int = 10):
-    """
-    Get top scores from leaderboard
-    """
+    """Return the persistent top 10, ranked by consistent performance."""
     try:
-        df = get_leaderboard()
-
-        if df is None or len(df) == 0:
-            return {"scores": []}
-
-        # Limit results
-        df = df.head(limit)
-
-        # Format response
-        scores = [
-            LeaderboardEntry(
-                rank=idx + 1,
-                name=row["Name"],
-                score=int(row["Score"]),
-            )
-            for idx, (_, row) in enumerate(df.iterrows())
-        ]
-
-        return {"scores": scores}
+        return {"scores": [LeaderboardEntry(**entry) for entry in get_top_players(limit)]}
 
     except Exception as e:
         print(f"Leaderboard error: {e}")

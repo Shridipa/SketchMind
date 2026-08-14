@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from './services/api';
 import Home from './components/Home';
 import Setup from './components/Setup';
@@ -15,6 +15,8 @@ export default function App() {
   const [gameState, setGameState] = useState(null);
   const [prediction, setPrediction] = useState(null);
   const [playerName, setPlayerName] = useState('');
+  const [finalResult, setFinalResult] = useState(null);
+  const isEndingGame = useRef(false);
 
   // Check backend health on mount
   useEffect(() => {
@@ -42,6 +44,8 @@ export default function App() {
       setGameState(gameData);
       setScreen('game');
       setPrediction(null);
+      setFinalResult(null);
+      isEndingGame.current = false;
     } catch (err) {
       alert('Failed to start game: ' + err.message);
     }
@@ -61,6 +65,7 @@ export default function App() {
       );
 
       if (nextData.finished) {
+        await finishGame();
         setScreen('gameover');
       } else {
         setGameState((prev) => ({
@@ -82,6 +87,7 @@ export default function App() {
       const nextData = await api.skipRound(gameState.player);
 
       if (nextData.finished) {
+        await finishGame();
         setScreen('gameover');
       } else {
         setGameState((prev) => ({
@@ -98,16 +104,28 @@ export default function App() {
     }
   };
 
-  const handleGameOver = async () => {
+  const finishGame = async () => {
+    if (isEndingGame.current) return;
+    isEndingGame.current = true;
     try {
-      await api.endGame(playerName);
+      const result = await api.endGame(playerName);
+      setFinalResult(result);
+      setScreen('gameover');
+      return result;
+    } catch (err) {
+      console.error('Error ending game:', err);
+      setScreen('gameover');
+    }
+  };
+
+  const handleGameOver = async () => {
+    await finishGame();
+  };
+
+  const handlePlayAgain = () => {
       setGameState(null);
       setPrediction(null);
       setScreen('home');
-    } catch (err) {
-      console.error('Error ending game:', err);
-      setScreen('home');
-    }
   };
 
   if (!backendReady) {
@@ -158,9 +176,8 @@ export default function App() {
       {screen === 'gameover' && (
         <GameOver
           playerName={playerName}
-          onPlayAgain={() => {
-            handleGameOver();
-          }}
+          result={finalResult}
+          onPlayAgain={handlePlayAgain}
         />
       )}
     </>

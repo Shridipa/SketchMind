@@ -7,6 +7,9 @@ services:
       - "8000:8000"
     environment:
       ALLOWED_ORIGINS: http://localhost:5173
+      LEADERBOARD_DB_PATH: /app/data/leaderboard.db
+    volumes:
+      - leaderboard_data:/app/data
 
   frontend:
     build:
@@ -18,3 +21,6 @@ services:
       - "5173:80"
     depends_on:
       - backend
+
+volumes:
+  leaderboard_data:
