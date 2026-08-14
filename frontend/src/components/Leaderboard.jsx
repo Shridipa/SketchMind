@@ -5,6 +5,7 @@ import './leaderboard.css';
 const rankLabel = (rank) => ({ 1: '🥇', 2: '🥈', 3: '🥉' }[rank] || rank);
 
 export default function Leaderboard({ currentPlayer, limit = 10 }) {
+  // The backend remains the source of truth for ranking and player statistics.
   const [entries, setEntries] = useState([]);
   const [status, setStatus] = useState('loading');
   const loadLeaderboard = async () => { setStatus('loading'); try { const data = await api.getLeaderboard(limit); setEntries(data.scores || []); setStatus('ready'); } catch { setStatus('error'); } };
