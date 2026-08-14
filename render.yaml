@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: sketchmind-api
+    runtime: docker
+    branch: frontend-final
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: ALLOWED_ORIGINS
+        sync: false
