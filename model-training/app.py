@@ -1,7 +1,6 @@
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
-import pandas as pd
 import time
 
 from predictor import Predictor
@@ -9,68 +8,113 @@ from game import Game
 from leaderboard import save_score, get_leaderboard
 from streamlit_autorefresh import st_autorefresh
 
+
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
+
 st.set_page_config(
     page_title="SketchMind Challenge",
     page_icon="🎨",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-# -------------------------------
-# Custom CSS
-# -------------------------------
 
-st.markdown("""
-<style>
+# ============================================================
+# CUSTOM CSS
+# ============================================================
 
-html, body, [class*="css"]{
-    background:#0f172a;
-    color:white;
-}
+st.markdown(
+    """
+    <style>
 
-.block-container{
-    padding-top:2rem;
-}
+    html, body, [class*="css"] {
+        background-color: #0f172a;
+        color: white;
+    }
 
-.big-title{
-    font-size:48px;
-    font-weight:700;
-    text-align:center;
-}
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+    }
 
-.subtitle{
-    font-size:20px;
-    text-align:center;
-    color:#cbd5e1;
-}
+    .big-title {
+        font-size: 52px;
+        font-weight: 800;
+        text-align: center;
+        margin-bottom: 10px;
+    }
 
-.score-box{
-    background:#1e293b;
-    padding:20px;
-    border-radius:15px;
-    text-align:center;
-}
+    .subtitle {
+        font-size: 20px;
+        text-align: center;
+        color: #cbd5e1;
+        margin-bottom: 30px;
+    }
 
-.prompt-box{
-    background:#334155;
-    padding:15px;
-    border-radius:12px;
-    text-align:center;
-    font-size:28px;
-    font-weight:bold;
-}
+    .score-box {
+        background: #1e293b;
+        padding: 20px;
+        border-radius: 15px;
+        text-align: center;
+    }
 
-.result-box{
-    background:#1e293b;
-    padding:25px;
-    border-radius:15px;
-}
+    .prompt-box {
+        background: #334155;
+        padding: 15px;
+        border-radius: 12px;
+        text-align: center;
+        font-size: 28px;
+        font-weight: bold;
+    }
 
-</style>
-""", unsafe_allow_html=True)
+    .result-box {
+        background: #1e293b;
+        padding: 25px;
+        border-radius: 15px;
+        margin-top: 20px;
+    }
 
-# -------------------------------
-# Session State
-# -------------------------------
+    .prediction-card {
+        background: #1e293b;
+        padding: 15px;
+        border-radius: 12px;
+        margin: 8px 0;
+    }
+
+    .game-prompt {
+        text-align: center;
+        color: #22c55e;
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
+
+    .game-word {
+        text-align: center;
+        color: white;
+        font-size: 48px;
+        font-weight: 800;
+        margin-top: 0;
+        margin-bottom: 25px;
+    }
+
+    .footer {
+        text-align: center;
+        color: #64748b;
+        margin-top: 40px;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# SESSION STATE INITIALIZATION
+# ============================================================
 
 if "predictor" not in st.session_state:
     st.session_state.predictor = Predictor()
@@ -94,7 +138,10 @@ if "prediction" not in st.session_state:
     st.session_state.prediction = ""
 
 if "confidence" not in st.session_state:
-    st.session_state.confidence = 0
+    st.session_state.confidence = 0.0
+
+if "top3" not in st.session_state:
+    st.session_state.top3 = []
 
 if "correct" not in st.session_state:
     st.session_state.correct = False
@@ -102,11 +149,18 @@ if "correct" not in st.session_state:
 if "round_start_time" not in st.session_state:
     st.session_state.round_start_time = None
 
+
+# ============================================================
+# OBJECT REFERENCES
+# ============================================================
+
 predictor = st.session_state.predictor
 game = st.session_state.game
-# -------------------------------
+
+
+# ============================================================
 # HOME SCREEN
-# -------------------------------
+# ============================================================
 
 if st.session_state.screen == "home":
 
@@ -116,57 +170,113 @@ if st.session_state.screen == "home":
     )
 
     st.markdown(
-        "<div class='subtitle'>Can the AI recognize your drawings?</div>",
+        """
+        <div class='subtitle'>
+            Can the AI recognize your drawings?
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
     st.write("")
-    st.write("")
 
-    col1, col2 = st.columns([2,1])
+    col1, col2 = st.columns([2, 1])
+
+    # --------------------------------------------------------
+    # START GAME
+    # --------------------------------------------------------
 
     with col1:
 
+        st.subheader("🎮 Start Your Challenge")
+
         player = st.text_input(
             "Enter Your Name",
-            value=st.session_state.player
+            value=st.session_state.player,
+            placeholder="Your name..."
         )
 
         difficulty = st.selectbox(
-            "Difficulty",
+            "Choose Difficulty",
             [
                 "Easy",
                 "Medium",
                 "Hard"
-            ]
+            ],
+            index=[
+                "Easy",
+                "Medium",
+                "Hard"
+            ].index(
+                st.session_state.difficulty
+            )
         )
+
+        st.write("")
 
         if st.button(
             "🎮 Start Game",
-            use_container_width=True
+            use_container_width=True,
+            type="primary"
         ):
 
-            st.session_state.player = player
-            st.session_state.difficulty = difficulty
+            if not player.strip():
 
-            game.start(
-                predictor.labels,
-                difficulty
-            )
+                st.warning(
+                    "Please enter your name first."
+                )
 
-            st.session_state.screen = "game"
+            else:
 
-            st.rerun()
+                st.session_state.player = (
+                    player.strip()
+                )
+
+                st.session_state.difficulty = (
+                    difficulty
+                )
+
+                # Create a completely new game
+                st.session_state.game = Game()
+
+                game = st.session_state.game
+
+                game.start(
+                    predictor.labels,
+                    difficulty
+                )
+
+                # Reset prediction state
+                st.session_state.prediction = ""
+                st.session_state.confidence = 0.0
+                st.session_state.top3 = []
+                st.session_state.correct = False
+
+                st.session_state.round_start_time = (
+                    time.time()
+                )
+
+                st.session_state.started = True
+
+                st.session_state.screen = "game"
+
+                st.rerun()
+
+    # --------------------------------------------------------
+    # LEADERBOARD
+    # --------------------------------------------------------
 
     with col2:
 
-        st.markdown("## 🏆 Leaderboard")
+        st.subheader("🏆 Leaderboard")
 
         leaderboard = get_leaderboard()
 
-        if len(leaderboard) == 0:
+        if leaderboard is None or len(leaderboard) == 0:
 
-            st.info("No scores yet.")
+            st.info(
+                "No scores yet. Be the first!"
+            )
 
         else:
 
@@ -175,78 +285,103 @@ if st.session_state.screen == "home":
                 use_container_width=True,
                 hide_index=True
             )
-# -------------------------------
+
+
+# ============================================================
 # GAME SCREEN
-# -------------------------------
+# ============================================================
 
 elif st.session_state.screen == "game":
 
     st.title("🎨 SketchMind Challenge")
 
-    if st.session_state.round_start_time is None:
-        st.session_state.round_start_time = time.time()
+    # --------------------------------------------------------
+    # TIMER INITIALIZATION
+    # --------------------------------------------------------
 
-# Refresh page every second
-    st_autorefresh(interval=1000, key="timer")
+    if st.session_state.round_start_time is None:
+
+        st.session_state.round_start_time = (
+            time.time()
+        )
+
+    # Refresh every second
+    st_autorefresh(
+        interval=1000,
+        key=f"timer_{game.round}"
+    )
 
     elapsed = int(
-        time.time() -
-        st.session_state.round_start_time
-        )
+        time.time()
+        - st.session_state.round_start_time
+    )
 
     remaining = max(
         0,
         game.time_limit - elapsed
-        )
-    
+    )
+
+    # --------------------------------------------------------
+    # PLAYER + SCORE
+    # --------------------------------------------------------
+
     col1, col2 = st.columns([3, 1])
 
     with col1:
+
         st.markdown(
             f"""
             <h3 style="margin-bottom:0;">
-            👤 {st.session_state.player}
+                👤 {st.session_state.player}
             </h3>
             """,
             unsafe_allow_html=True
-            )
+        )
 
     with col2:
+
         st.markdown(
             f"""
             <h3 style="text-align:right;margin-bottom:0;">
-            ⭐ {game.score}
+                ⭐ {game.score}
             </h3>
             """,
             unsafe_allow_html=True
-            )
+        )
 
     st.divider()
 
-    left, right = st.columns([2, 1])
+    # --------------------------------------------------------
+    # ROUND + TIMER
+    # --------------------------------------------------------
+
+    left, right = st.columns(2)
 
     with left:
+
         st.write(
             f"### 🎯 Round {game.round + 1}/{game.max_rounds}"
-            )
+        )
 
     with right:
+
         st.write(
             f"### ⏱ {remaining}s"
-            )
-
+        )
 
     st.progress(
         remaining / game.time_limit
-        )
+    )
 
-    st.warning(
-        f"⏱ {remaining} seconds left"
-        )
+    # --------------------------------------------------------
+    # TIME EXPIRED
+    # --------------------------------------------------------
 
     if remaining == 0:
 
-        st.error("⏰ Time's Up!")
+        st.error(
+            "⏰ Time's Up!"
+        )
 
         game.wrong_answer()
 
@@ -259,65 +394,102 @@ elif st.session_state.screen == "game":
             save_score(
                 st.session_state.player,
                 game.score
-                )
+            )
 
             st.session_state.screen = "game_over"
 
+        else:
+
+            st.session_state.screen = "game"
+
         st.rerun()
 
-    progress = (game.round) / game.max_rounds
+    # --------------------------------------------------------
+    # ROUND PROGRESS
+    # --------------------------------------------------------
 
-    st.progress(progress)
+    round_progress = (
+        game.round / game.max_rounds
+    )
+
+    st.progress(
+        min(
+            max(round_progress, 0),
+            1
+        )
+    )
 
     st.write("")
+
+    # --------------------------------------------------------
+    # CURRENT PROMPT
+    # --------------------------------------------------------
 
     prompt = game.current_prompt()
 
+    prompt = str(
+        prompt
+    ).strip().lower()
+
+    st.markdown(
+        """
+        <div class="game-prompt">
+            ✏ Draw
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.markdown(
         f"""
-        <h2 style="
-            text-align:center;
-            color:#22c55e;
-            margin-bottom:5px;
-            ">
-                ✏ Draw
-            </h2>
+        <div class="game-word">
+            {prompt.upper()}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-        <h1 style="
-            text-align:center;
-            color:white;
-            font-size:48px;
-            margin-top:0;
-            margin-bottom:20px;
-            ">
-                {prompt.upper()}
-            </h1>
-            """,
-            unsafe_allow_html=True
-            )
-
-    st.write("")
+    # --------------------------------------------------------
+    # CANVAS
+    # --------------------------------------------------------
 
     canvas = st_canvas(
+
         fill_color="black",
+
         stroke_width=12,
+
         stroke_color="white",
+
         background_color="black",
+
         width=500,
+
         height=500,
+
         drawing_mode="freedraw",
+
+        display_toolbar=True,
+
         key=f"canvas_{game.round}"
     )
 
     st.write("")
 
-    left, middle, right = st.columns([2,2,1])
+    # --------------------------------------------------------
+    # BUTTONS
+    # --------------------------------------------------------
+
+    left, middle, right = st.columns(
+        [2, 2, 1]
+    )
 
     with left:
 
         submit = st.button(
             "✅ Done",
-            use_container_width=True
+            use_container_width=True,
+            type="primary"
         )
 
     with middle:
@@ -330,12 +502,51 @@ elif st.session_state.screen == "game":
     with right:
 
         quit_game = st.button(
-            "❌ Quit"
+            "❌ Quit",
+            use_container_width=True
         )
 
-    # --------------------
-    # Skip
-    # --------------------
+    # --------------------------------------------------------
+    # CURRENT SCORE
+    # --------------------------------------------------------
+
+    st.write("")
+
+    score_col, accuracy_col = st.columns(2)
+
+    with score_col:
+
+        st.metric(
+            "Current Score",
+            game.score
+        )
+
+    with accuracy_col:
+
+        # This is a score percentage, not model accuracy.
+        max_possible = (
+            game.max_rounds * 20
+        )
+
+        if max_possible > 0:
+
+            score_percentage = (
+                game.score /
+                max_possible
+            ) * 100
+
+        else:
+
+            score_percentage = 0
+
+        st.metric(
+            "Score %",
+            f"{score_percentage:.1f}%"
+        )
+
+    # ========================================================
+    # SKIP
+    # ========================================================
 
     if skip:
 
@@ -345,20 +556,29 @@ elif st.session_state.screen == "game":
 
         st.session_state.round_start_time = None
 
+        st.session_state.prediction = ""
+        st.session_state.confidence = 0.0
+        st.session_state.top3 = []
+        st.session_state.correct = False
+
         if game.finished():
 
             save_score(
                 st.session_state.player,
                 game.score
-                )
+            )
 
             st.session_state.screen = "game_over"
 
+        else:
+
+            st.session_state.screen = "game"
+
         st.rerun()
 
-    # --------------------
-    # Quit
-    # --------------------
+    # ========================================================
+    # QUIT
+    # ========================================================
 
     if quit_game:
 
@@ -373,99 +593,292 @@ elif st.session_state.screen == "game":
 
         st.rerun()
 
-    # --------------------
-    # Predict
-    # --------------------
+    # ========================================================
+    # SUBMIT / PREDICT
+    # ========================================================
 
     if submit:
 
-        if canvas.image_data is not None:
+        if canvas.image_data is None:
 
-            image = Image.fromarray(
-                canvas.image_data.astype("uint8")
+            st.warning(
+                "✏ Please draw something first!"
             )
 
-            with st.spinner("AI is thinking..."):
+        else:
 
-                prediction, confidence = predictor.predict(image)
+            # ------------------------------------------------
+            # Convert Streamlit canvas to PIL image
+            # ------------------------------------------------
 
-            st.session_state.prediction = prediction
-            st.session_state.confidence = confidence
+            image_array = (
+                canvas.image_data
+                .astype("uint8")
+            )
 
-            if prediction == prompt:
+            image = Image.fromarray(
+                image_array
+            )
 
-                st.session_state.correct = True
+            # ------------------------------------------------
+            # Check if canvas is actually empty
+            # ------------------------------------------------
 
-                if game.difficulty == "Easy":
-                    points = 10
+            grayscale = image.convert("L")
 
-                elif game.difficulty == "Medium":
-                    points = 15
+            pixels = (
+                __import__("numpy")
+                .array(grayscale)
+            )
 
-                else:
-                    points = 20
+            if pixels.max() < 20:
 
-# Bonus for high confidence
-                if confidence > 0.95:
-                    points += 5
-
-                game.add_score(points)
+                st.warning(
+                    "✏ Your canvas is empty. "
+                    "Please draw something!"
+                )
 
             else:
-                st.session_state.correct = False
-                game.wrong_answer()
 
-            st.session_state.screen = "result"
+                with st.spinner(
+                    "🤖 AI is analyzing your drawing..."
+                ):
 
-            st.session_state.round_start_time = None
+                    # Get prediction
+                    prediction, confidence = (
+                        predictor.predict(image)
+                    )
 
-            st.rerun()
-# -------------------------------
+                    # Get top 3
+                    top3 = (
+                        predictor.predict_top3(image)
+                    )
+
+                # ------------------------------------------------
+                # Normalize prediction
+                # ------------------------------------------------
+
+                prediction = str(
+                    prediction
+                ).strip().lower()
+
+                # ------------------------------------------------
+                # Store prediction
+                # ------------------------------------------------
+
+                st.session_state.prediction = (
+                    prediction
+                )
+
+                st.session_state.confidence = (
+                    confidence
+                )
+
+                st.session_state.top3 = (
+                    top3
+                )
+
+                # ------------------------------------------------
+                # Compare with target
+                # ------------------------------------------------
+
+                target = str(
+                    prompt
+                ).strip().lower()
+
+                if prediction == target:
+
+                    st.session_state.correct = True
+
+                    # -------------------------------
+                    # Difficulty scoring
+                    # -------------------------------
+
+                    if game.difficulty == "Easy":
+
+                        points = 10
+
+                    elif game.difficulty == "Medium":
+
+                        points = 15
+
+                    else:
+
+                        points = 20
+
+                    # -------------------------------
+                    # High confidence bonus
+                    # -------------------------------
+
+                    if confidence >= 0.95:
+
+                        points += 5
+
+                    game.add_score(
+                        points
+                    )
+
+                else:
+
+                    st.session_state.correct = False
+
+                    game.wrong_answer()
+
+                st.session_state.screen = "result"
+
+                st.session_state.round_start_time = None
+
+                st.rerun()
+
+
+# ============================================================
 # RESULT SCREEN
-# -------------------------------
+# ============================================================
 
 elif st.session_state.screen == "result":
 
     st.title("🎯 AI Result")
 
+    prediction = (
+        st.session_state.prediction
+    )
+
+    confidence = (
+        st.session_state.confidence
+    )
+
+    top3 = (
+        st.session_state.top3
+    )
+
+    # --------------------------------------------------------
+    # RESULT
+    # --------------------------------------------------------
+
     if st.session_state.correct:
 
-        st.success("✅ Correct!")
+        st.success(
+            "🎉 Correct! The AI recognized your drawing!"
+        )
 
-        if st.session_state.confidence > 0.95:
-            st.info("🌟 Confidence Bonus +5")
+        if confidence >= 0.95:
+
+            st.info(
+                "🌟 High Confidence Bonus: +5 points"
+            )
 
     else:
 
-        st.error("❌ Wrong Drawing!")
+        st.error(
+            "❌ The AI didn't recognize the target."
+        )
 
     st.write("")
+
+    # --------------------------------------------------------
+    # EXPECTED VS PREDICTED
+    # --------------------------------------------------------
 
     col1, col2 = st.columns(2)
 
     with col1:
 
         st.metric(
-            "Expected",
+            "🎯 Expected",
             game.current_prompt().upper()
         )
 
     with col2:
 
         st.metric(
-            "AI Predicted",
-            st.session_state.prediction.upper()
+            "🤖 AI Predicted",
+            prediction.upper()
+            if prediction
+            else "UNKNOWN"
         )
 
-    st.metric(
-        "Confidence",
-        f"{st.session_state.confidence*100:.2f}%"
-    )
+    # --------------------------------------------------------
+    # CONFIDENCE
+    # --------------------------------------------------------
 
     st.metric(
-        "Current Score",
+        "🧠 Confidence",
+        f"{confidence * 100:.2f}%"
+    )
+
+    st.progress(
+        min(
+            max(confidence, 0.0),
+            1.0
+        )
+    )
+
+    # --------------------------------------------------------
+    # TOP 3 PREDICTIONS
+    # --------------------------------------------------------
+
+    st.write("")
+
+    st.subheader(
+        "🤖 AI Top 3 Predictions"
+    )
+
+    if top3:
+
+        for index, result in enumerate(
+            top3,
+            start=1
+        ):
+
+            label = str(
+                result["label"]
+            ).upper()
+
+            probability = (
+                result["confidence"]
+                * 100
+            )
+
+            if index == 1:
+
+                icon = "🥇"
+
+            elif index == 2:
+
+                icon = "🥈"
+
+            else:
+
+                icon = "🥉"
+
+            st.markdown(
+                f"""
+                <div class="prediction-card">
+                    <strong>
+                        {icon} {index}. {label}
+                    </strong>
+                    <br>
+                    Confidence:
+                    {probability:.2f}%
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    # --------------------------------------------------------
+    # SCORE
+    # --------------------------------------------------------
+
+    st.write("")
+
+    st.metric(
+        "⭐ Current Score",
         game.score
     )
+
+    # --------------------------------------------------------
+    # NEXT ROUND / QUIT
+    # --------------------------------------------------------
 
     st.write("")
 
@@ -474,11 +887,20 @@ elif st.session_state.screen == "result":
     with left:
 
         if st.button(
-            "➡ Next Round",
-            use_container_width=True
+            "➡️ Next Round",
+            use_container_width=True,
+            type="primary"
         ):
 
             game.next_round()
+
+            # Reset prediction state
+            st.session_state.prediction = ""
+            st.session_state.confidence = 0.0
+            st.session_state.top3 = []
+            st.session_state.correct = False
+
+            st.session_state.round_start_time = None
 
             if game.finished():
 
@@ -487,13 +909,13 @@ elif st.session_state.screen == "result":
                     game.score
                 )
 
-                st.session_state.screen = "game_over"
+                st.session_state.screen = (
+                    "game_over"
+                )
 
             else:
 
                 st.session_state.screen = "game"
-
-            st.session_state.round_start_time = None
 
             st.rerun()
 
@@ -509,13 +931,18 @@ elif st.session_state.screen == "result":
                 game.score
             )
 
-            st.session_state.screen = "game_over"
+            st.session_state.screen = (
+                "game_over"
+            )
+
+            st.session_state.round_start_time = None
 
             st.rerun()
 
-# -------------------------------
+
+# ============================================================
 # GAME OVER
-# -------------------------------
+# ============================================================
 
 elif st.session_state.screen == "game_over":
 
@@ -523,32 +950,73 @@ elif st.session_state.screen == "game_over":
 
     st.title("🏆 Game Over")
 
-    st.metric(
-        "Final Score",
-        game.score
+    st.markdown(
+        f"""
+        <div class="big-title">
+            🎉 Challenge Complete!
+        </div>
+
+        <div class="subtitle">
+            Well played, {st.session_state.player}!
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-    accuracy = 0
+    # --------------------------------------------------------
+    # FINAL SCORE
+    # --------------------------------------------------------
 
-    if game.max_rounds > 0:
+    col1, col2 = st.columns(2)
 
-        accuracy = (
-            game.score /
-            (game.max_rounds * 15)
-        ) * 100
+    with col1:
 
-    st.metric(
-        "Accuracy",
-        f"{accuracy:.1f}%"
-    )
+        st.metric(
+            "🏆 Final Score",
+            game.score
+        )
+
+    with col2:
+
+        max_possible = (
+            game.max_rounds * 20
+        )
+
+        if max_possible > 0:
+
+            final_percentage = (
+                game.score /
+                max_possible
+            ) * 100
+
+        else:
+
+            final_percentage = 0
+
+        st.metric(
+            "📊 Score %",
+            f"{final_percentage:.1f}%"
+        )
 
     st.write("")
 
-    st.subheader("🏆 Leaderboard")
+    # --------------------------------------------------------
+    # LEADERBOARD
+    # --------------------------------------------------------
+
+    st.subheader(
+        "🏆 Leaderboard"
+    )
 
     leaderboard = get_leaderboard()
 
-    if len(leaderboard):
+    if leaderboard is None or len(leaderboard) == 0:
+
+        st.info(
+            "No leaderboard data yet."
+        )
+
+    else:
 
         st.dataframe(
             leaderboard.head(10),
@@ -558,9 +1026,14 @@ elif st.session_state.screen == "game_over":
 
     st.write("")
 
+    # --------------------------------------------------------
+    # PLAY AGAIN
+    # --------------------------------------------------------
+
     if st.button(
         "🔄 Play Again",
-        use_container_width=True
+        use_container_width=True,
+        type="primary"
     ):
 
         st.session_state.screen = "home"
@@ -571,8 +1044,26 @@ elif st.session_state.screen == "game_over":
 
         st.session_state.prediction = ""
 
-        st.session_state.confidence = 0
+        st.session_state.confidence = 0.0
+
+        st.session_state.top3 = []
+
+        st.session_state.round_start_time = None
 
         st.session_state.game = Game()
 
         st.rerun()
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.markdown(
+    """
+    <div class="footer">
+        🎨 SketchMind • AI-Powered Drawing Challenge
+    </div>
+    """,
+    unsafe_allow_html=True
+)

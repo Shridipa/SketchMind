@@ -1,0 +1,119 @@
+/* Home Screen Styles */
+
+.home-screen {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: transparent;
+  padding: 2rem;
+  overflow: hidden;
+}
+
+.home-container {
+  max-width: 500px;
+  width: 100%;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+
+.home-title {
+  font-size: 3rem;
+  font-weight: 700;
+  color: #42328e;
+  margin-bottom: 0.5rem;
+  letter-spacing: -1px;
+}
+
+.home-subtitle {
+  font-size: 1.25rem;
+  color: #5F6368;
+  margin-bottom: 2rem;
+  font-weight: 400;
+}
+
+.home-container::before {
+  content: '✦ AI DRAWING CHALLENGE ✦';
+  display: inline-block;
+  color: #6c4df6;
+  background: #eeeaff;
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-bottom: 1rem;
+}
+
+.btn-large {
+  width: 100%;
+  padding: 1rem;
+  font-size: 1rem;
+  margin-bottom: 2rem;
+}
+
+.home-info {
+  color: #5F6368;
+  margin-bottom: 2rem;
+  font-size: 0.95rem;
+}
+
+.home-leaderboard {
+  margin-top: 3rem;
+  text-align: left;
+}
+
+.home-leaderboard h3 {
+  font-size: 1rem;
+  text-align: center;
+  margin-bottom: 1rem;
+  color: #202124;
+}
+
+.leaderboard-table {
+  background-color: rgba(255, 255, 255, 0.86);
+  border: 1px solid #deddf6;
+  border-radius: 16px;
+  box-shadow: 0 14px 30px rgba(74, 61, 151, 0.1);
+  overflow: hidden;
+}
+
+.leaderboard-row {
+  display: flex;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #DADCE0;
+  align-items: center;
+}
+
+.leaderboard-row:last-child {
+  border-bottom: none;
+}
+
+.rank {
+  font-weight: 600;
+  color: #5F6368;
+  width: 3rem;
+  text-align: left;
+}
+
+.name {
+  flex: 1;
+  text-align: left;
+  color: #202124;
+}
+
+.score {
+  font-weight: 600;
+  color: #1A73E8;
+}
+
+@media (max-width: 768px) {
+  .home-title {
+    font-size: 2rem;
+  }
+
+  .home-subtitle {
+    font-size: 1rem;
+  }
+}

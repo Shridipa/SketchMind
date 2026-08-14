@@ -19,31 +19,19 @@ class Game:
 
         self.time_limit = 30
 
-    def start(self, labels, difficulty="Easy"):
+    def start(self, labels):
 
         self.score = 0
         self.round = 0
         self.correct_answers = 0
         self.streak = 0
 
-    # Use ALL labels
+        # Use every available label once per game.
         self.questions = random.sample(labels, len(labels))
 
-    # Number of rounds
-        self.max_rounds = 10
-
-    # Take first 10 UNIQUE prompts
-        self.questions = self.questions[:self.max_rounds]
-
-        self.difficulty = difficulty
-        if difficulty == "Easy":
-            self.time_limit = 30
-
-        elif difficulty == "Medium":
-            self.time_limit = 20
-
-        else:
-            self.time_limit = 10
+        # One round for each object the model recognizes (currently 20).
+        self.max_rounds = len(self.questions)
+        self.time_limit = 30
 
     def current_prompt(self):
 

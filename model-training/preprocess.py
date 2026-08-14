@@ -2,10 +2,32 @@ import os
 import numpy as np
 from sklearn.model_selection import train_test_split
 
-# Dataset folder
-DATASET_PATH = "../dataset"
+# ============================================================
+# PATH CONFIGURATION
+# ============================================================
 
-# Categories (must match your labels.txt)
+# Project root = parent directory of model-training/
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# QuickDraw raw dataset
+DATASET_PATH = os.path.join(
+    PROJECT_ROOT,
+    "data",
+    "quickdraw",
+    "raw"
+)
+
+# Processed dataset will be stored here
+PROCESSED_PATH = os.path.join(
+    PROJECT_ROOT,
+    "model-training",
+    "processed"
+)
+
+# ============================================================
+# QUICK DRAW CATEGORIES
+# ============================================================
+
 CATEGORIES = [
     "airplane",
     "apple",
@@ -29,32 +51,94 @@ CATEGORIES = [
     "triangle"
 ]
 
+# Maximum number of drawings per category
+MAX_SAMPLES_PER_CLASS = 10000
+
+# ============================================================
+# LOAD DATASET
+# ============================================================
+
 images = []
 labels = []
 
-print("=" * 50)
+print("=" * 60)
 print("Loading Quick Draw Dataset...")
-print("=" * 50)
+print("=" * 60)
+
+print(f"\nDataset path:")
+print(DATASET_PATH)
+
+print(f"\nNumber of categories: {len(CATEGORIES)}")
+print(f"Maximum samples per category: {MAX_SAMPLES_PER_CLASS}")
+
+# ============================================================
+# LOAD EACH CATEGORY
+# ============================================================
 
 for idx, category in enumerate(CATEGORIES):
 
-    filename = f"full_numpy_bitmap_{category}.npy"
+    filename = f"{category}.npy"
     path = os.path.join(DATASET_PATH, filename)
 
+    print("\n" + "-" * 60)
+    print(f"Category {idx + 1}/{len(CATEGORIES)}: {category}")
+    print(f"File: {filename}")
+
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Dataset not found: {path}")
+        raise FileNotFoundError(
+            f"\nDataset file not found:\n{path}\n\n"
+            f"Make sure {filename} exists inside:\n"
+            f"{DATASET_PATH}"
+        )
 
-    print(f"Loading {filename}")
+    try:
+        print("Loading...")
 
-    data = np.load(path)
+        data = np.load(path)
 
-    # Use only the first 10000 drawings from each category
-    data = data[:10000]
+        print(f"Original shape: {data.shape}")
+        print(f"Original dtype: {data.dtype}")
 
+    except Exception as e:
+        raise RuntimeError(
+            f"\nCould not load dataset file:\n{path}\n\n"
+            f"The file may be incomplete or corrupted.\n"
+            f"Original error: {e}"
+        )
+
+    # --------------------------------------------------------
+    # Limit number of samples
+    # --------------------------------------------------------
+
+    if len(data) > MAX_SAMPLES_PER_CLASS:
+        data = data[:MAX_SAMPLES_PER_CLASS]
+
+    print(f"Using samples: {len(data)}")
+
+    # --------------------------------------------------------
+    # Verify shape
+    # --------------------------------------------------------
+
+    if data.ndim != 2 or data.shape[1] != 784:
+        raise ValueError(
+            f"\nInvalid shape for {filename}: {data.shape}\n"
+            f"Expected: (N, 784)"
+        )
+
+    # Add images
     images.append(data)
+
+    # Create numeric labels
     labels.extend([idx] * len(data))
 
-# Combine all classes
+# ============================================================
+# COMBINE ALL CLASSES
+# ============================================================
+
+print("\n" + "=" * 60)
+print("Combining all categories...")
+print("=" * 60)
+
 images = np.concatenate(images, axis=0)
 labels = np.array(labels)
 
@@ -62,38 +146,162 @@ print("\nDataset Loaded Successfully!")
 print("Images Shape :", images.shape)
 print("Labels Shape :", labels.shape)
 
-# Reshape from (N,784) to (N,28,28,1)
+# ============================================================
+# RESHAPE
+# ============================================================
+
+print("\nReshaping images...")
+
+# Original:
+# (N, 784)
+#
+# New:
+# (N, 28, 28, 1)
+
 images = images.reshape((-1, 28, 28, 1))
 
-# Normalize pixel values
+print("New Image Shape:", images.shape)
+
+# ============================================================
+# NORMALIZATION
+# ============================================================
+
+print("\nNormalizing pixel values...")
+
+# uint8:
+# 0 - 255
+#
+# float32:
+# 0.0 - 1.0
+
 images = images.astype(np.float32) / 255.0
 
-# Train-Test Split
+print("Image dtype:", images.dtype)
+print("Minimum pixel value:", images.min())
+print("Maximum pixel value:", images.max())
+
+# ============================================================
+# TRAIN / TEST SPLIT
+# ============================================================
+
+print("\n" + "=" * 60)
+print("Creating Train/Test Split...")
+print("=" * 60)
+
 X_train, X_test, y_train, y_test = train_test_split(
     images,
     labels,
     test_size=0.2,
     random_state=42,
-    stratify=labels
+    stratify=labels,
+    shuffle=True
 )
 
-# Create output folder
-os.makedirs("processed", exist_ok=True)
+print("\nTraining samples:", X_train.shape[0])
+print("Testing samples :", X_test.shape[0])
 
-# Save processed data
-np.save("processed/X_train.npy", X_train)
-np.save("processed/X_test.npy", X_test)
-np.save("processed/y_train.npy", y_train)
-np.save("processed/y_test.npy", y_test)
+# ============================================================
+# CREATE OUTPUT DIRECTORY
+# ============================================================
 
-print("\n" + "=" * 50)
-print("Preprocessing Complete!")
-print("=" * 50)
-print("Training Samples :", X_train.shape[0])
-print("Testing Samples  :", X_test.shape[0])
+os.makedirs(PROCESSED_PATH, exist_ok=True)
+
+print("\nProcessed data directory:")
+print(PROCESSED_PATH)
+
+# ============================================================
+# SAVE PROCESSED DATA
+# ============================================================
+
+print("\nSaving processed datasets...")
+
+np.save(
+    os.path.join(PROCESSED_PATH, "X_train.npy"),
+    X_train
+)
+
+np.save(
+    os.path.join(PROCESSED_PATH, "X_test.npy"),
+    X_test
+)
+
+np.save(
+    os.path.join(PROCESSED_PATH, "y_train.npy"),
+    y_train
+)
+
+np.save(
+    os.path.join(PROCESSED_PATH, "y_test.npy"),
+    y_test
+)
+
+# ============================================================
+# SAVE CLASS NAMES
+# ============================================================
+
+# Save the category order so the model's numeric predictions
+# can later be converted back into class names.
+
+labels_path = os.path.join(
+    PROCESSED_PATH,
+    "labels.txt"
+)
+
+with open(labels_path, "w", encoding="utf-8") as f:
+    for category in CATEGORIES:
+        f.write(category + "\n")
+
+# ============================================================
+# FINAL SUMMARY
+# ============================================================
+
+print("\n" + "=" * 60)
+print("PREPROCESSING COMPLETE!")
+print("=" * 60)
+
+print("\nCategories:")
+for idx, category in enumerate(CATEGORIES):
+    print(f"{idx:2d} -> {category}")
+
+print("\nFinal Dataset:")
+print("X_train:", X_train.shape)
+print("X_test :", X_test.shape)
+print("y_train:", y_train.shape)
+print("y_test :", y_test.shape)
 
 print("\nFiles Saved:")
-print("processed/X_train.npy")
-print("processed/X_test.npy")
-print("processed/y_train.npy")
-print("processed/y_test.npy")
+
+print(
+    os.path.join(
+        PROCESSED_PATH,
+        "X_train.npy"
+    )
+)
+
+print(
+    os.path.join(
+        PROCESSED_PATH,
+        "X_test.npy"
+    )
+)
+
+print(
+    os.path.join(
+        PROCESSED_PATH,
+        "y_train.npy"
+    )
+)
+
+print(
+    os.path.join(
+        PROCESSED_PATH,
+        "y_test.npy"
+    )
+)
+
+print(labels_path)
+
+print("\n" + "=" * 60)
+print("Ready for model training!")
+print("=" * 60)
+

@@ -1,0 +1,10 @@
+# API runtime only. The existing .keras models were saved with Keras 3.15.1;
+# these pins load them without changing their weights or model definition.
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pillow==10.2.0
+numpy==1.26.4
+pandas==2.1.4
+tensorflow==2.21.0
+keras==3.15.1

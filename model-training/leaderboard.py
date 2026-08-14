@@ -1,12 +1,15 @@
 import pandas as pd
 import os
 
-FILE = "leaderboard.csv"
+# Get the directory where this file is located
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+FILE = os.path.join(SCRIPT_DIR, "leaderboard.csv")
 
 
 def save_score(name, score):
 
-    if not name.strip():
+    name = name.strip()
+    if not name:
         name = "Anonymous"
 
     if os.path.exists(FILE):
@@ -19,20 +22,22 @@ def save_score(name, score):
             columns=["Name", "Score"]
         )
 
-    new_row = pd.DataFrame({
-        "Name": [name],
-        "Score": [score]
-    })
+    # Keep a single entry per player and preserve only their highest score.
+    # This also cleans up duplicate names already present in the CSV.
+    df["Name"] = df["Name"].astype(str).str.strip()
+    df["Score"] = pd.to_numeric(df["Score"], errors="coerce").fillna(0).astype(int)
+    normalized_name = name.casefold()
+    existing = df["Name"].str.casefold() == normalized_name
 
-    df = pd.concat(
-        [df, new_row],
-        ignore_index=True
-    )
+    if existing.any():
+        best_score = max(int(score), int(df.loc[existing, "Score"].max()))
+        df = df.loc[~existing]
+        new_row = pd.DataFrame({"Name": [name], "Score": [best_score]})
+    else:
+        new_row = pd.DataFrame({"Name": [name], "Score": [int(score)]})
 
-    df = df.sort_values(
-        by="Score",
-        ascending=False
-    )
+    df = pd.concat([df, new_row], ignore_index=True)
+    df = df.sort_values(by=["Score", "Name"], ascending=[False, True], kind="stable")
 
     df.to_csv(
         FILE,
@@ -46,10 +51,15 @@ def get_leaderboard():
 
         df = pd.read_csv(FILE)
 
-        df = df.sort_values(
-            by="Score",
-            ascending=False
+        df["Name"] = df["Name"].astype(str).str.strip()
+        df["Score"] = pd.to_numeric(df["Score"], errors="coerce").fillna(0).astype(int)
+        df["_normalized_name"] = df["Name"].str.casefold()
+        df = (
+            df.sort_values(by=["Score", "Name"], ascending=[False, True], kind="stable")
+            .drop_duplicates(subset="_normalized_name", keep="first")
+            .drop(columns="_normalized_name")
         )
+        df = df.sort_values(by=["Score", "Name"], ascending=[False, True], kind="stable")
 
         return df
 
