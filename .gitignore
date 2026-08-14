@@ -5,9 +5,21 @@ __pycache__/
 
 # Node
 node_modules/
+dist/
+build/
 
 # Dataset
 dataset/
+data/quickdraw/raw/
+data/quickdraw/processed/
+*.npy
+*.npz
+
+# Environment and logs
+.env
+.env.*
+!.env.example
+*.log
 
 # Training outputs
 model-training/processed/

@@ -6,6 +6,27 @@ The TensorFlow/Keras model and training assets are kept in `model-training/` and
 
 ## Run the app
 
+### Docker
+
+Install and start Docker Desktop, then run from the repository root:
+
+```powershell
+docker compose up --build
+```
+
+Open the game at [http://localhost:5173](http://localhost:5173). The FastAPI
+health endpoint is [http://localhost:8000/api/health](http://localhost:8000/api/health).
+
+Stop the containers with:
+
+```powershell
+docker compose down
+```
+
+The production image includes only the runtime backend, React build, labels,
+and trained Keras model. Raw QuickDraw `.npy` datasets are deliberately excluded
+from the Docker build; they are only needed for retraining.
+
 ### Windows (recommended)
 
 From the `SketchMind` folder, run:
