@@ -40,6 +40,7 @@ export default function App() {
 
   const handleBeginGame = async (name) => {
     try {
+      setPlayerName(name);
       const gameData = await api.startGame(name);
       setGameState(gameData);
       setScreen('game');
@@ -108,7 +109,7 @@ export default function App() {
     if (isEndingGame.current) return;
     isEndingGame.current = true;
     try {
-      const result = await api.endGame(playerName);
+      const result = await api.endGame(gameState?.player || playerName);
       setFinalResult(result);
       setScreen('gameover');
       return result;
