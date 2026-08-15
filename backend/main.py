@@ -110,6 +110,12 @@ class LeaderboardEntry(BaseModel):
 # ============================================================
 
 
+@app.get("/")
+async def root():
+    """Small unauthenticated service check for a deployed API root URL."""
+    return {"status": "ok", "service": "SketchMind API"}
+
+
 @app.get("/api/health")
 async def health_check():
     """Simple health check endpoint"""
