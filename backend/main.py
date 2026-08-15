@@ -45,7 +45,7 @@ allowed_origins = os.getenv(
 ).split(",")
 vercel_origin_regex = os.getenv(
     "VERCEL_ORIGIN_REGEX",
-    r"https://(sketch-mind-1irk\.vercel\.app|sketch-mind-1irk-[a-z0-9]+-shridipas-projects\.vercel\.app)",
+    r"https://(sketch-mind-(1irk|77rw)\.vercel\.app|sketch-mind-(1irk|77rw)-[a-z0-9]+-shridipas-projects\.vercel\.app)",
 )
 
 app.add_middleware(
