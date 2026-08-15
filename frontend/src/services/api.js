@@ -9,9 +9,15 @@ export const api = {
    * Health check
    */
   async health() {
-    const response = await fetch(`${API_URL}/api/health`);
-    if (!response.ok) throw new Error('Health check failed');
-    return response.json();
+    const url = `${API_URL}/api/health`;
+    console.log('[HEALTH] URL:', url);
+    const response = await fetch(url);
+    console.log('[HEALTH] status:', response.status);
+    console.log('[HEALTH] ok:', response.ok);
+    const data = await response.json();
+    console.log('[HEALTH] response:', data);
+    if (!response.ok) throw new Error(`Health check failed (HTTP ${response.status})`);
+    return data;
   },
 
   /**
